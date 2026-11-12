@@ -701,6 +701,23 @@ fn parse_number(cur: &mut Cursor) -> anyhow::Result<Value> {
             cur.pos += 1;
         }
     }
+    // Gemma 4 writes small floats as `1e-05`; an unparsed exponent fails the whole args object.
+    if matches!(cur.peek_byte(), Some(b'e' | b'E')) {
+        let save = cur.pos;
+        cur.pos += 1;
+        if matches!(cur.peek_byte(), Some(b'+' | b'-')) {
+            cur.pos += 1;
+        }
+        let exp_start = cur.pos;
+        while cur.pos < bytes.len() && bytes[cur.pos].is_ascii_digit() {
+            cur.pos += 1;
+        }
+        if cur.pos == exp_start {
+            cur.pos = save;
+        } else {
+            is_float = true;
+        }
+    }
     let lex = &cur.src[start..cur.pos];
     if is_float {
         let f: f64 = lex.parse()?;
@@ -720,6 +737,16 @@ mod tests {
         assert_eq!(calls.len(), 1, "expected exactly one tool call");
         let args: Value = serde_json::from_str(&calls[0].function.arguments).unwrap();
         (calls[0].function.name.clone(), args)
+    }
+
+    #[test]
+    fn exponent_numbers_parse() {
+        let (_, args) =
+            extract_first("<|tool_call>call:cfg{a:1e-05,b:2.5E+3,c:-3e2,d:7}<tool_call|>");
+        assert!((args["a"].as_f64().unwrap() - 1e-5).abs() < 1e-12);
+        assert!((args["b"].as_f64().unwrap() - 2500.0).abs() < 1e-9);
+        assert!((args["c"].as_f64().unwrap() + 300.0).abs() < 1e-9);
+        assert_eq!(args["d"], serde_json::json!(7));
     }
 
     #[test] // detection helper
