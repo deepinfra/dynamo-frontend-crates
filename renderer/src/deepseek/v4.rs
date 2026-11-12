@@ -506,7 +506,7 @@ impl crate::OAIPromptFormatter for DeepSeekV4Formatter {
 
         normalize_message_contents(&mut messages_array, NormalizeNonText::LeaveUntouched);
 
-        super::common::inject_tools_and_response_format(&mut messages_array, req)?;
+        super::common::inject_tools_and_response_format(&mut messages_array, req, true)?;
 
         encode_owned_messages(
             messages_array,

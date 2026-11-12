@@ -26,6 +26,9 @@ pub use minimax_append_think_parser::MiniMaxAppendThinkParser;
 pub(crate) const KIMI_K2_TOOL_SECTION_BEGIN: &str = "<|tool_calls_section_begin|>";
 pub(crate) const DEEPSEEK_TOOL_BLOCK_BEGIN: &str = "<｜DSML｜tool_calls>";
 pub(crate) const DEEPSEEK_TOOL_INVOKE_BEGIN: &str = "<｜DSML｜invoke name=";
+/// DeepSeek-V3.2 opens its DSML tool block with `function_calls` where V4 uses
+/// `tool_calls`; the `invoke` marker is shared.
+pub(crate) const DEEPSEEK_V32_TOOL_BLOCK_BEGIN: &str = "<｜DSML｜function_calls>";
 
 static REASONING_PARSER_MAP: OnceLock<HashMap<&'static str, ReasoningParserType>> = OnceLock::new();
 
@@ -41,7 +44,10 @@ fn get_reasoning_parser_map() -> &'static HashMap<&'static str, ReasoningParserT
         // shares this forced think-tag parser.
         map.insert("deepseek_v3", ReasoningParserType::DeepseekR1);
         map.insert("deepseek_v3_1", ReasoningParserType::DeepseekR1);
-        map.insert("deepseek_v3_2", ReasoningParserType::DeepseekR1);
+        // V3.2 in thinking mode often follows a tool result with a short thought
+        // and then the DSML tool block, without ever emitting `</think>`; its
+        // variant also ends reasoning at the DSML tool markers.
+        map.insert("deepseek_v3_2", ReasoningParserType::DeepSeekV32);
         map.insert("basic", ReasoningParserType::Basic);
         map.insert("gpt_oss", ReasoningParserType::GptOss);
         map.insert("qwen3", ReasoningParserType::Qwen);
@@ -258,6 +264,14 @@ pub enum ReasoningParserType {
     Inkling,
     /// Nemotron v3 may enter a tool call without closing its thinking block.
     NemotronV3,
+    /// DeepSeek-V3.2: the forced `<think>` / `</think>` parser of
+    /// [`Self::DeepseekR1`], plus a force-exit at the DSML tool markers
+    /// (`<｜DSML｜function_calls>`, `<｜DSML｜invoke name=`). In thinking mode,
+    /// after a tool result, V3.2 regularly writes a short thought and then the
+    /// tool block with no `</think>`; without the exit the whole call stays in
+    /// `reasoning_content` and the response carries neither content nor
+    /// tool_calls.
+    DeepSeekV32,
 }
 
 #[derive(std::fmt::Debug)]
@@ -336,6 +350,13 @@ impl ReasoningParserType {
                 parser: Box::new(
                     BasicReasoningParser::new("<think>".into(), "</think>".into(), false, true)
                         .with_tool_start_token(DEEPSEEK_TOOL_BLOCK_BEGIN)
+                        .with_tool_start_token(DEEPSEEK_TOOL_INVOKE_BEGIN),
+                ),
+            },
+            ReasoningParserType::DeepSeekV32 => ReasoningParserWrapper {
+                parser: Box::new(
+                    BasicReasoningParser::new("<think>".into(), "</think>".into(), true, true)
+                        .with_tool_start_token(DEEPSEEK_V32_TOOL_BLOCK_BEGIN)
                         .with_tool_start_token(DEEPSEEK_TOOL_INVOKE_BEGIN),
                 ),
             },
@@ -870,6 +891,91 @@ mod tests {
         for parser in available_parsers {
             assert!(parsers.contains(&parser));
         }
+    }
+
+    /// What DeepSeek-V3.2 returned in thinking mode for the turn after a tool
+    /// result: a short thought, then the tool block, and no `</think>`.
+    const V32_TOOL_CALL_IN_THINKING: &str = "Now I need to check src/main.py.\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"read_file\">\n<｜DSML｜parameter name=\"path\" string=\"true\">src/main.py</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls>";
+
+    #[test]
+    fn test_deepseek_v32_detect_and_parse_exits_reasoning_on_function_calls_block() {
+        let mut parser = ReasoningParserType::get_reasoning_parser_from_name("deepseek_v3_2");
+        let result = parser.detect_and_parse_reasoning(V32_TOOL_CALL_IN_THINKING, &[]);
+
+        assert_eq!(
+            result.reasoning_text.trim(),
+            "Now I need to check src/main.py."
+        );
+        assert!(
+            result
+                .normal_text
+                .starts_with(DEEPSEEK_V32_TOOL_BLOCK_BEGIN),
+            "tool block must reach the tool parser: {:?}",
+            result.normal_text
+        );
+        assert!(result.normal_text.ends_with("</｜DSML｜function_calls>"));
+    }
+
+    #[test]
+    fn test_deepseek_v32_detect_and_parse_exits_reasoning_on_bare_invoke() {
+        let mut parser = ReasoningParserType::get_reasoning_parser_from_name("deepseek_v3_2");
+        let tool_call = format!(
+            "{DEEPSEEK_TOOL_INVOKE_BEGIN}\"bash\">\n<｜DSML｜parameter name=\"cmd\" string=\"true\">pwd</｜DSML｜parameter>\n</｜DSML｜invoke>"
+        );
+        let result = parser.detect_and_parse_reasoning(&format!("need a tool{tool_call}"), &[]);
+
+        assert_eq!(result.reasoning_text, "need a tool");
+        assert_eq!(result.normal_text, tool_call);
+    }
+
+    #[test]
+    fn test_deepseek_v32_streaming_exits_reasoning_on_split_function_calls_block() {
+        let mut parser = ReasoningParserType::get_reasoning_parser_from_name("deepseek_v3_2");
+        let chunks = [
+            "Now I need to check ",
+            "src/main.py.\n\n<",
+            "｜DSML｜function_",
+            "calls>\n<｜DSML｜invoke name=\"read_file\">",
+        ];
+        let mut reasoning = String::new();
+        let mut normal = String::new();
+        for chunk in chunks {
+            let result = parser.parse_reasoning_streaming_incremental(chunk, &[]);
+            reasoning.push_str(&result.reasoning_text);
+            normal.push_str(&result.normal_text);
+        }
+
+        assert_eq!(reasoning.trim(), "Now I need to check src/main.py.");
+        assert_eq!(
+            normal,
+            "<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"read_file\">"
+        );
+    }
+
+    #[test]
+    fn test_deepseek_v32_still_splits_on_think_end() {
+        let mut parser = ReasoningParserType::get_reasoning_parser_from_name("deepseek_v3_2");
+        let result =
+            parser.detect_and_parse_reasoning("the port is 8080</think>It listens on 8080.", &[]);
+
+        assert_eq!(result.reasoning_text, "the port is 8080");
+        assert_eq!(result.normal_text, "It listens on 8080.");
+    }
+
+    #[test]
+    fn test_deepseek_v32_tool_call_after_think_end_stays_normal() {
+        let mut parser = ReasoningParserType::get_reasoning_parser_from_name("deepseek_v3_2");
+        let result = parser.detect_and_parse_reasoning(
+            "check main.py</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"read_file\">",
+            &[],
+        );
+
+        // Same as the R1 parser: whitespace after `</think>` is trimmed.
+        assert_eq!(result.reasoning_text, "check main.py");
+        assert_eq!(
+            result.normal_text,
+            "<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"read_file\">"
+        );
     }
 
     #[test]

@@ -531,9 +531,13 @@ pub(crate) fn resolve_thinking_mode(
     default_mode
 }
 
+/// `include_response_format` false leaves the request's response_format out of
+/// the prompt (DeepSeek-V3.2, as vLLM renders it): the grammar alone enforces
+/// the format, once the engine's reasoning parser sees `</think>`.
 pub(crate) fn inject_tools_and_response_format(
     messages_array: &mut Vec<JsonValue>,
     req: &dyn crate::OAIChatLikeRequest,
+    include_response_format: bool,
 ) -> Result<()> {
     let tools_json = req
         .tools()
@@ -553,6 +557,7 @@ pub(crate) fn inject_tools_and_response_format(
 
     let response_format_json = req
         .response_format()
+        .filter(|_| include_response_format)
         .map(|rf| crate::python::template_json(&rf))
         .transpose()
         .context("Failed to convert response_format to JSON")?;

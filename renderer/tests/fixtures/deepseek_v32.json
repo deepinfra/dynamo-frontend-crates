@@ -1,0 +1,3030 @@
+{
+ "encode": [
+  {
+   "name": "plain_chat-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Hello!"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a helpful assistant.<｜User｜>Hello!<｜Assistant｜></think>"
+  },
+  {
+   "name": "plain_chat-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Hello!"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a helpful assistant.<｜User｜>Hello!<｜Assistant｜><think>"
+  },
+  {
+   "name": "multi_turn_chat-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Hi, what is 2+2?"
+    },
+    {
+     "role": "assistant",
+     "content": "4.",
+     "reasoning_content": "Simple sum."
+    },
+    {
+     "role": "user",
+     "content": "And 3+3?"
+    },
+    {
+     "role": "assistant",
+     "content": "6."
+    },
+    {
+     "role": "user",
+     "content": "Thanks!"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a helpful assistant.<｜User｜>Hi, what is 2+2?<｜Assistant｜></think>4.<｜end▁of▁sentence｜><｜User｜>And 3+3?<｜Assistant｜></think>6.<｜end▁of▁sentence｜><｜User｜>Thanks!<｜Assistant｜></think>"
+  },
+  {
+   "name": "multi_turn_chat-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a helpful assistant."
+    },
+    {
+     "role": "user",
+     "content": "Hi, what is 2+2?"
+    },
+    {
+     "role": "assistant",
+     "content": "4.",
+     "reasoning_content": "Simple sum."
+    },
+    {
+     "role": "user",
+     "content": "And 3+3?"
+    },
+    {
+     "role": "assistant",
+     "content": "6."
+    },
+    {
+     "role": "user",
+     "content": "Thanks!"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a helpful assistant.<｜User｜>Hi, what is 2+2?<｜Assistant｜></think>4.<｜end▁of▁sentence｜><｜User｜>And 3+3?<｜Assistant｜></think>6.<｜end▁of▁sentence｜><｜User｜>Thanks!<｜Assistant｜><think>"
+  },
+  {
+   "name": "user_only-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hello!"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>Hello!<｜Assistant｜></think>"
+  },
+  {
+   "name": "user_only-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "user",
+     "content": "Hello!"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>Hello!<｜Assistant｜><think>"
+  },
+  {
+   "name": "agent_loop_no_reasoning-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>"
+  },
+  {
+   "name": "agent_loop_no_reasoning-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜><think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n<think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n<think>"
+  },
+  {
+   "name": "agent_loop_empty_reasoning-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ],
+     "reasoning_content": ""
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ],
+     "reasoning_content": ""
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>"
+  },
+  {
+   "name": "agent_loop_empty_reasoning-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ],
+     "reasoning_content": ""
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ],
+     "reasoning_content": ""
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜><think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n<think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n<think>"
+  },
+  {
+   "name": "agent_loop_with_reasoning-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 1"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 2"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>"
+  },
+  {
+   "name": "agent_loop_with_reasoning-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 1"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 2"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜><think>Need data. 1</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n<think>Need data. 2</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n<think>"
+  },
+  {
+   "name": "agent_loop_final_no_reasoning-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C cloudy, Tokyo 22C sunny."
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>Paris 18C cloudy, Tokyo 22C sunny.<｜end▁of▁sentence｜>"
+  },
+  {
+   "name": "agent_loop_final_no_reasoning-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C cloudy, Tokyo 22C sunny."
+    }
+   ],
+   "reference_error": "ThinkingMode: thinking, invalid message without reasoning/tool_calls `{'role': 'assistant', 'content': 'Paris 18C cloudy, Tokyo 22C sunny.'}` after last user message"
+  },
+  {
+   "name": "agent_loop_then_user_no_reasoning-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C cloudy, Tokyo 22C sunny."
+    },
+    {
+     "role": "user",
+     "content": "Thanks. And London?"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>Paris 18C cloudy, Tokyo 22C sunny.<｜end▁of▁sentence｜><｜User｜>Thanks. And London?<｜Assistant｜></think>"
+  },
+  {
+   "name": "agent_loop_then_user_no_reasoning-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C cloudy, Tokyo 22C sunny."
+    },
+    {
+     "role": "user",
+     "content": "Thanks. And London?"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>Paris 18C cloudy, Tokyo 22C sunny.<｜end▁of▁sentence｜><｜User｜>Thanks. And London?<｜Assistant｜><think>"
+  },
+  {
+   "name": "agent_loop_then_user_with_reasoning-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 1"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 2"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C cloudy, Tokyo 22C sunny.",
+     "reasoning_content": "Need data. 3"
+    },
+    {
+     "role": "user",
+     "content": "Thanks. And London?"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>Paris 18C cloudy, Tokyo 22C sunny.<｜end▁of▁sentence｜><｜User｜>Thanks. And London?<｜Assistant｜></think>"
+  },
+  {
+   "name": "agent_loop_then_user_with_reasoning-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "You are a coding agent.",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 1"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ],
+     "reasoning_content": "Need data. 2"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    },
+    {
+     "role": "assistant",
+     "content": "Paris 18C cloudy, Tokyo 22C sunny.",
+     "reasoning_content": "Need data. 3"
+    },
+    {
+     "role": "user",
+     "content": "Thanks. And London?"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>You are a coding agent.\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>Paris 18C cloudy, Tokyo 22C sunny.<｜end▁of▁sentence｜><｜User｜>Thanks. And London?<｜Assistant｜><think>"
+  },
+  {
+   "name": "tools_no_system_message-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "Weather in Paris?"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n</functions>\n<｜User｜>Weather in Paris?<｜Assistant｜></think>"
+  },
+  {
+   "name": "tools_no_system_message-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "Weather in Paris?"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n</functions>\n<｜User｜>Weather in Paris?<｜Assistant｜><think>"
+  },
+  {
+   "name": "tools_no_system_message_agent_loop-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>"
+  },
+  {
+   "name": "tools_no_system_message_agent_loop-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      },
+      {
+       "type": "function",
+       "function": {
+        "name": "search",
+        "description": "Search the web",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "query": {
+           "type": "string"
+          },
+          "limit": {
+           "type": "integer"
+          },
+          "filters": {
+           "type": "object"
+          }
+         },
+         "required": [
+          "query"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "user",
+     "content": "What's the weather in Paris and Tokyo? Search news too."
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C, cloudy"
+    },
+    {
+     "role": "assistant",
+     "content": null,
+     "tool_calls": [
+      {
+       "id": "c2",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+       }
+      },
+      {
+       "id": "c3",
+       "type": "function",
+       "function": {
+        "name": "search",
+        "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c2",
+     "content": "22C, sunny"
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c3",
+     "content": "[{\"title\": \"Tokyo\"}]"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜><think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n<think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n<think>"
+  },
+  {
+   "name": "no_user_message-chat",
+   "thinking": false,
+   "messages": [
+    {
+     "role": "system",
+     "content": "",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n</functions>\n\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C</result>\n</function_results>\n\n</think>"
+  },
+  {
+   "name": "no_user_message-thinking",
+   "thinking": true,
+   "messages": [
+    {
+     "role": "system",
+     "content": "",
+     "tools": [
+      {
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "description": "Get current weather",
+        "parameters": {
+         "type": "object",
+         "properties": {
+          "location": {
+           "type": "string",
+           "description": "City name"
+          },
+          "unit": {
+           "type": "string",
+           "enum": [
+            "celsius",
+            "fahrenheit"
+           ]
+          }
+         },
+         "required": [
+          "location"
+         ]
+        }
+       }
+      }
+     ]
+    },
+    {
+     "role": "assistant",
+     "content": "",
+     "tool_calls": [
+      {
+       "id": "c1",
+       "type": "function",
+       "function": {
+        "name": "get_weather",
+        "arguments": "{\"location\": \"Paris\"}"
+       }
+      }
+     ]
+    },
+    {
+     "role": "tool",
+     "tool_call_id": "c1",
+     "content": "18C"
+    }
+   ],
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n</functions>\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C</result>\n</function_results>\n\n<think>"
+  }
+ ],
+ "request": [
+  {
+   "name": "plain_chat-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are a helpful assistant."
+     },
+     {
+      "role": "user",
+      "content": "Hello!"
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>You are a helpful assistant.<｜User｜>Hello!<｜Assistant｜></think>"
+  },
+  {
+   "name": "plain_chat-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are a helpful assistant."
+     },
+     {
+      "role": "user",
+      "content": "Hello!"
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>You are a helpful assistant.<｜User｜>Hello!<｜Assistant｜><think>"
+  },
+  {
+   "name": "multi_turn_reasoning_field-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "Hi"
+     },
+     {
+      "role": "assistant",
+      "content": "Hello",
+      "reasoning": "Greet back."
+     },
+     {
+      "role": "user",
+      "content": "Bye"
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>Hi<｜Assistant｜></think>Hello<｜end▁of▁sentence｜><｜User｜>Bye<｜Assistant｜></think>"
+  },
+  {
+   "name": "multi_turn_reasoning_field-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "Hi"
+     },
+     {
+      "role": "assistant",
+      "content": "Hello",
+      "reasoning": "Greet back."
+     },
+     {
+      "role": "user",
+      "content": "Bye"
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>Hi<｜Assistant｜></think>Hello<｜end▁of▁sentence｜><｜User｜>Bye<｜Assistant｜><think>"
+  },
+  {
+   "name": "tools_no_system_message-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "Weather in Paris?"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n</functions>\n<｜User｜>Weather in Paris?<｜Assistant｜></think>"
+  },
+  {
+   "name": "tools_no_system_message-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "Weather in Paris?"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n</functions>\n<｜User｜>Weather in Paris?<｜Assistant｜><think>"
+  },
+  {
+   "name": "agent_loop_no_reasoning_no_system-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "What's the weather in Paris and Tokyo? Search news too."
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"Paris\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "18C, cloudy"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "c2",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+        }
+       },
+       {
+        "id": "c3",
+        "type": "function",
+        "function": {
+         "name": "search",
+         "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c2",
+      "content": "22C, sunny"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c3",
+      "content": "[{\"title\": \"Tokyo\"}]"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "search",
+       "description": "Search the web",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         },
+         "filters": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "query"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>"
+  },
+  {
+   "name": "agent_loop_no_reasoning_no_system-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "What's the weather in Paris and Tokyo? Search news too."
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"Paris\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "18C, cloudy"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "c2",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+        }
+       },
+       {
+        "id": "c3",
+        "type": "function",
+        "function": {
+         "name": "search",
+         "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c2",
+      "content": "22C, sunny"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c3",
+      "content": "[{\"title\": \"Tokyo\"}]"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "search",
+       "description": "Search the web",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         },
+         "filters": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "query"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜><think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n<think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n<think>"
+  },
+  {
+   "name": "agent_loop_with_reasoning_no_system-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "What's the weather in Paris and Tokyo? Search news too."
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"Paris\"}"
+        }
+       }
+      ],
+      "reasoning_content": "Need data. 1"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "18C, cloudy"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "c2",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+        }
+       },
+       {
+        "id": "c3",
+        "type": "function",
+        "function": {
+         "name": "search",
+         "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+        }
+       }
+      ],
+      "reasoning_content": "Need data. 2"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c2",
+      "content": "22C, sunny"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c3",
+      "content": "[{\"title\": \"Tokyo\"}]"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "search",
+       "description": "Search the web",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         },
+         "filters": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "query"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>"
+  },
+  {
+   "name": "agent_loop_with_reasoning_no_system-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "What's the weather in Paris and Tokyo? Search news too."
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"Paris\"}"
+        }
+       }
+      ],
+      "reasoning_content": "Need data. 1"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "18C, cloudy"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "c2",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+        }
+       },
+       {
+        "id": "c3",
+        "type": "function",
+        "function": {
+         "name": "search",
+         "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+        }
+       }
+      ],
+      "reasoning_content": "Need data. 2"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c2",
+      "content": "22C, sunny"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c3",
+      "content": "[{\"title\": \"Tokyo\"}]"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "search",
+       "description": "Search the web",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         },
+         "filters": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "query"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\n<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜><think>Need data. 1</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n<think>Need data. 2</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n<think>"
+  },
+  {
+   "name": "agent_loop_no_reasoning_with_system-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are a coding agent."
+     },
+     {
+      "role": "user",
+      "content": "What's the weather in Paris and Tokyo? Search news too."
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"Paris\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "18C, cloudy"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "c2",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+        }
+       },
+       {
+        "id": "c3",
+        "type": "function",
+        "function": {
+         "name": "search",
+         "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c2",
+      "content": "22C, sunny"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c3",
+      "content": "[{\"title\": \"Tokyo\"}]"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "search",
+       "description": "Search the web",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         },
+         "filters": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "query"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\nYou are a coding agent.<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n</think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n</think>",
+   "known_diff": "vLLM puts the tools in a new leading system message, so the client's system text follows </functions> directly; Dynamo appends the tools to the client's system message after \\n\\n"
+  },
+  {
+   "name": "agent_loop_no_reasoning_with_system-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "system",
+      "content": "You are a coding agent."
+     },
+     {
+      "role": "user",
+      "content": "What's the weather in Paris and Tokyo? Search news too."
+     },
+     {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+       {
+        "id": "c1",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"Paris\"}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c1",
+      "content": "18C, cloudy"
+     },
+     {
+      "role": "assistant",
+      "content": null,
+      "tool_calls": [
+       {
+        "id": "c2",
+        "type": "function",
+        "function": {
+         "name": "get_weather",
+         "arguments": "{\"location\": \"\\u6771\\u4eac\", \"unit\": \"celsius\"}"
+        }
+       },
+       {
+        "id": "c3",
+        "type": "function",
+        "function": {
+         "name": "search",
+         "arguments": "{\"query\": \"Tokyo news\", \"limit\": 3, \"filters\": {\"lang\": [\"en\", \"ja\"], \"safe\": true}}"
+        }
+       }
+      ]
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c2",
+      "content": "22C, sunny"
+     },
+     {
+      "role": "tool",
+      "tool_call_id": "c3",
+      "content": "[{\"title\": \"Tokyo\"}]"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "get_weather",
+       "description": "Get current weather",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "location": {
+          "type": "string",
+          "description": "City name"
+         },
+         "unit": {
+          "type": "string",
+          "enum": [
+           "celsius",
+           "fahrenheit"
+          ]
+         }
+        },
+        "required": [
+         "location"
+        ]
+       }
+      }
+     },
+     {
+      "type": "function",
+      "function": {
+       "name": "search",
+       "description": "Search the web",
+       "parameters": {
+        "type": "object",
+        "properties": {
+         "query": {
+          "type": "string"
+         },
+         "limit": {
+          "type": "integer"
+         },
+         "filters": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "query"
+        ]
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"get_weather\", \"description\": \"Get current weather\", \"parameters\": {\"type\": \"object\", \"properties\": {\"location\": {\"type\": \"string\", \"description\": \"City name\"}, \"unit\": {\"type\": \"string\", \"enum\": [\"celsius\", \"fahrenheit\"]}}, \"required\": [\"location\"]}}\n{\"name\": \"search\", \"description\": \"Search the web\", \"parameters\": {\"type\": \"object\", \"properties\": {\"query\": {\"type\": \"string\"}, \"limit\": {\"type\": \"integer\"}, \"filters\": {\"type\": \"object\"}}, \"required\": [\"query\"]}}\n</functions>\nYou are a coding agent.<｜User｜>What's the weather in Paris and Tokyo? Search news too.<｜Assistant｜><think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">Paris</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>18C, cloudy</result>\n</function_results>\n\n<think></think>\n\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"get_weather\">\n<｜DSML｜parameter name=\"location\" string=\"true\">東京</｜DSML｜parameter>\n<｜DSML｜parameter name=\"unit\" string=\"true\">celsius</｜DSML｜parameter>\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"search\">\n<｜DSML｜parameter name=\"query\" string=\"true\">Tokyo news</｜DSML｜parameter>\n<｜DSML｜parameter name=\"limit\" string=\"false\">3</｜DSML｜parameter>\n<｜DSML｜parameter name=\"filters\" string=\"false\">{\"lang\": [\"en\", \"ja\"], \"safe\": true}</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜function_calls><｜end▁of▁sentence｜>\n\n<function_results>\n<result>22C, sunny</result>\n<result>[{\"title\": \"Tokyo\"}]</result>\n</function_results>\n\n<think>",
+   "known_diff": "vLLM puts the tools in a new leading system message, so the client's system text follows </functions> directly; Dynamo appends the tools to the client's system message after \\n\\n"
+  },
+  {
+   "name": "tool_without_description-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "Time?"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "now",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"now\", \"description\": null, \"parameters\": {\"type\": \"object\", \"properties\": {}}}\n</functions>\n<｜User｜>Time?<｜Assistant｜></think>",
+   "known_diff": "vLLM's model_dump() writes \"description\": null before parameters; Dynamo writes \"description\": \"\" after them"
+  },
+  {
+   "name": "tool_without_description-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": "Time?"
+     }
+    ],
+    "tools": [
+     {
+      "type": "function",
+      "function": {
+       "name": "now",
+       "parameters": {
+        "type": "object",
+        "properties": {}
+       }
+      }
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜>\n\n## Tools\n\nYou have access to a set of tools you can use to answer the user's question.\nYou can invoke functions by writing a \"<｜DSML｜function_calls>\" block like the following as part of your reply to the user:\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"$FUNCTION_NAME\">\n<｜DSML｜parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜parameter>\n...\n</｜DSML｜invoke>\n<｜DSML｜invoke name=\"$FUNCTION_NAME2\">\n...\n</｜DSML｜invoke>\n</｜DSML｜function_calls>\n\nString and scalar parameters should be specified as is without any escaping or quotes, while lists and objects should use JSON format. The \"string\" attribute should be set to \"true\" for string type parameters and \"false\" for other types (numbers, booleans, arrays, objects).\n\nIf the thinking_mode is enabled, then after function results you should strongly consider outputting a thinking block. Here is an example:\n\n<｜DSML｜function_calls>\n...\n</｜DSML｜function_calls>\n\n<function_results>\n...\n</function_results>\n\n<think>...thinking about results</think>\n\nHere are the functions available in JSONSchema format:\n<functions>\n{\"name\": \"now\", \"description\": null, \"parameters\": {\"type\": \"object\", \"properties\": {}}}\n</functions>\n<｜User｜>Time?<｜Assistant｜><think>",
+   "known_diff": "vLLM's model_dump() writes \"description\": null before parameters; Dynamo writes \"description\": \"\" after them"
+  },
+  {
+   "name": "user_content_parts-chat",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": false
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "First part."
+       },
+       {
+        "type": "text",
+        "text": "Second part."
+       }
+      ]
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>First part.\nSecond part.<｜Assistant｜></think>",
+   "known_diff": "vLLM joins text parts with \\n (content_format=\"string\"); Dynamo concatenates"
+  },
+  {
+   "name": "user_content_parts-thinking",
+   "request": {
+    "chat_template_kwargs": {
+     "thinking": true
+    },
+    "messages": [
+     {
+      "role": "user",
+      "content": [
+       {
+        "type": "text",
+        "text": "First part."
+       },
+       {
+        "type": "text",
+        "text": "Second part."
+       }
+      ]
+     }
+    ]
+   },
+   "expected": "<｜begin▁of▁sentence｜><｜User｜>First part.\nSecond part.<｜Assistant｜><think>",
+   "known_diff": "vLLM joins text parts with \\n (content_format=\"string\"); Dynamo concatenates"
+  }
+ ]
+}

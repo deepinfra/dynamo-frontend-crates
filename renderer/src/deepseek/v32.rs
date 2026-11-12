@@ -102,15 +102,20 @@ fn render_message(
             // Handle reasoning_content which may be a plain string or an array of segments.
             // DeepSeek V3.2 always places its <think> block before all tool calls, so
             // joining segments produces the correct flat form here.
+            //
+            // The </think> is written even when reasoning is absent or empty, as in the
+            // reference encoding (`thinking_template.format(reasoning or "") +
+            // thinking_end_token`): agent clients rarely send reasoning back, and without
+            // it the turn's <think> stays open around the tool calls. The reference
+            // rejects such a message when it has no tool calls either; it is rendered
+            // with an empty think block here instead. No user message at all counts as
+            // every assistant message being after it (Python's last_user_idx of -1).
             if thinking_mode == ThinkingMode::Thinking
-                && last_user_idx.is_some_and(|idx| index > idx)
+                && last_user_idx.is_none_or(|idx| index > idx)
             {
                 let mut has_reasoning = false;
                 match msg.get("reasoning_content") {
-                    Some(JsonValue::String(text)) if !text.is_empty() => {
-                        prompt.push_str(text);
-                        has_reasoning = true;
-                    }
+                    Some(JsonValue::String(text)) => prompt.push_str(text),
                     Some(JsonValue::Array(parts)) => {
                         for text in parts
                             .iter()
@@ -126,9 +131,7 @@ fn render_message(
                     }
                     _ => {}
                 }
-                if has_reasoning {
-                    prompt.push_str(tokens::THINKING_END);
-                }
+                prompt.push_str(tokens::THINKING_END);
             }
 
             // Handle content
@@ -207,7 +210,7 @@ fn render_message(
                 if tool_call_order == tool_calls_count {
                     prompt.push_str("\n</function_results>");
 
-                    if last_user_idx.is_some_and(|idx| index >= idx)
+                    if last_user_idx.is_none_or(|idx| index >= idx)
                         && thinking_mode == ThinkingMode::Thinking
                     {
                         prompt.push_str("\n\n");
@@ -299,9 +302,12 @@ impl crate::OAIPromptFormatter for DeepSeekV32Formatter {
         // Normalize OpenAI content arrays (e.g. [{type: "text", text: "..."}]) to strings.
         normalize_message_contents(&mut messages_array, NormalizeNonText::SerializeJson);
 
-        // Inject tools and response_format from request into the first system message
-        // DeepSeek V3.2 expects these to be part of the system message for prompt rendering
-        super::common::inject_tools_and_response_format(&mut messages_array, req)?;
+        // Inject tools from request into the first system message. response_format
+        // stays out of the prompt, as in vLLM's deepseek_v32 tokenizer: written into
+        // the system message as the whole OpenAI wrapper, V3.2 in thinking mode
+        // deliberates over wrapper vs inner schema until max_tokens once the grammar
+        // waits for </think>. The grammar alone enforces the format.
+        super::common::inject_tools_and_response_format(&mut messages_array, req, false)?;
 
         // Encode with native implementation
         encode_messages(
@@ -347,6 +353,55 @@ mod tests {
         assert!(result.contains("Hello!"));
         assert!(result.contains(tokens::ASSISTANT_START));
         assert!(result.contains(tokens::THINKING_START));
+    }
+
+    #[test]
+    fn test_thinking_tool_call_turn_without_reasoning_closes_think() {
+        let tool_call = json!({
+            "id": "c1",
+            "type": "function",
+            "function": {"name": "get_weather", "arguments": "{\"location\": \"Paris\"}"}
+        });
+        let call_block = format!(
+            "\n\n<{d}function_calls>\n<{d}invoke name=\"get_weather\">\n\
+             <{d}parameter name=\"location\" string=\"true\">Paris</{d}parameter>\n\
+             </{d}invoke>\n</{d}function_calls>{eos}",
+            d = tokens::DSML_TOKEN,
+            eos = tokens::EOS,
+        );
+
+        // Agent clients send the tool-call turn back without reasoning_content (or
+        // with an empty one); the reference still closes the turn's think block.
+        for reasoning in [None, Some(""), Some("Look it up.")] {
+            let mut assistant =
+                json!({"role": "assistant", "content": "", "tool_calls": [tool_call]});
+            if let Some(r) = reasoning {
+                assistant["reasoning_content"] = json!(r);
+            }
+            let messages = json!([
+                {"role": "user", "content": "Weather in Paris?"},
+                assistant,
+                {"role": "tool", "tool_call_id": "c1", "content": "18C"}
+            ]);
+
+            let result =
+                encode_messages(messages.as_array().unwrap(), ThinkingMode::Thinking, true)
+                    .unwrap();
+
+            assert_eq!(
+                result,
+                format!(
+                    "{bos}{user}Weather in Paris?{asst}{think}{reasoning}{think_end}{call_block}\
+                     \n\n<function_results>\n<result>18C</result>\n</function_results>\n\n{think}",
+                    bos = tokens::BOS,
+                    user = tokens::USER_START,
+                    asst = tokens::ASSISTANT_START,
+                    think = tokens::THINKING_START,
+                    reasoning = reasoning.unwrap_or(""),
+                    think_end = tokens::THINKING_END,
+                ),
+            );
+        }
     }
 
     #[test]
@@ -722,7 +777,7 @@ mod tests {
     // ==================== Structured Output Tests ====================
 
     #[test]
-    fn test_formatter_injects_response_format_into_existing_system_message() {
+    fn test_formatter_keeps_response_format_out_of_existing_system_message() {
         use crate::OAIPromptFormatter;
 
         let response_format = json!({
@@ -742,25 +797,21 @@ mod tests {
             }
         });
 
-        let request = MockRequest::new(json!([
+        let messages = json!([
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Tell me about Moscow."}
-        ]))
-        .with_response_format(response_format);
+        ]);
+        let request = MockRequest::new(messages.clone()).with_response_format(response_format);
 
         let formatter = DeepSeekV32Formatter::new_thinking();
         let result = formatter.render(&request).unwrap();
+        let plain = formatter.render(&MockRequest::new(messages)).unwrap();
 
-        // Verify response format was injected into the prompt
-        assert!(
-            result.contains("## Response Format:"),
-            "Should contain Response Format section header"
-        );
-        assert!(
-            result.contains("json_schema"),
-            "Should contain json_schema type"
-        );
-        assert!(result.contains("city_info"), "Should contain schema name");
+        // As in vLLM's deepseek_v32 tokenizer: response_format is enforced by the
+        // grammar only, the prompt is the same as without it.
+        assert_eq!(result, plain);
+        assert!(!result.contains("## Response Format:"));
+        assert!(!result.contains("city_info"));
         assert!(
             result.contains("You are a helpful assistant."),
             "Should preserve original system content"
@@ -768,7 +819,7 @@ mod tests {
     }
 
     #[test]
-    fn test_formatter_creates_system_message_for_response_format_when_missing() {
+    fn test_formatter_adds_no_system_message_for_response_format() {
         use crate::OAIPromptFormatter;
 
         let response_format = json!({
@@ -786,23 +837,19 @@ mod tests {
         });
 
         // Request without system message
-        let request = MockRequest::new(json!([
+        let messages = json!([
             {"role": "user", "content": "What's the weather?"}
-        ]))
-        .with_response_format(response_format);
+        ]);
+        let request = MockRequest::new(messages.clone()).with_response_format(response_format);
 
         let formatter = DeepSeekV32Formatter::new_thinking();
         let result = formatter.render(&request).unwrap();
+        let plain = formatter.render(&MockRequest::new(messages)).unwrap();
 
-        // Verify response format was injected via auto-created system message
-        assert!(
-            result.contains("## Response Format:"),
-            "Should contain Response Format section even without explicit system message"
-        );
-        assert!(
-            result.contains("weather_response"),
-            "Should contain schema name"
-        );
+        // No system message is created just to carry the response_format.
+        assert_eq!(result, plain);
+        assert!(!result.contains("## Response Format:"));
+        assert!(!result.contains("weather_response"));
     }
 
     #[test]
@@ -847,20 +894,14 @@ mod tests {
         let formatter = DeepSeekV32Formatter::new_thinking();
         let result = formatter.render(&request).unwrap();
 
-        // Verify both tools and response format are present
+        // Tools are still injected; the response format stays out of the prompt.
         assert!(result.contains("## Tools"), "Should contain Tools section");
         assert!(
             result.contains("search_database"),
             "Should contain function name"
         );
-        assert!(
-            result.contains("## Response Format:"),
-            "Should contain Response Format section"
-        );
-        assert!(
-            result.contains("search_result"),
-            "Should contain schema name"
-        );
+        assert!(!result.contains("## Response Format:"));
+        assert!(!result.contains("search_result"));
         assert!(
             result.contains("You are a search assistant."),
             "Should preserve original system content"
