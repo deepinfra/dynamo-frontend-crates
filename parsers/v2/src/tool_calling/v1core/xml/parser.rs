@@ -401,18 +401,13 @@ pub fn parse_qwen_invoke(
     let Some(body) = body.strip_suffix("</function>") else {
         return Ok(None);
     };
-    static PARAMETERS_RE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
-        Regex::new(&build_block_pattern("<parameter=", "</parameter>", false))
-            .expect("static Qwen parameter pattern compiles")
-    });
     let config = get_arguments_config(name, Some(tools));
     let mut parameters: HashMap<String, ParsedValue> = HashMap::new();
-    for parameter in PARAMETERS_RE.captures_iter(body) {
-        let key = strip_quotes(parameter.get(1).unwrap().as_str().trim());
+    for (key, raw) in qwen_parameters(body, qwen_declared_parameters(tools, name)) {
+        let key = strip_quotes(key);
         if key.is_empty() {
             continue;
         }
-        let raw = parameter.get(2).unwrap().as_str();
         let raw = raw.strip_prefix('\n').unwrap_or(raw);
         let raw = raw.strip_suffix('\n').unwrap_or(raw);
         parameters.insert(
@@ -428,6 +423,80 @@ pub fn parse_qwen_invoke(
             arguments: serde_json::to_string(&parameters)?,
         },
     }))
+}
+
+/// The `properties` the tool named `function` declares.
+pub(crate) fn qwen_declared_parameters<'t>(
+    tools: &'t [ToolDefinition],
+    function: &str,
+) -> Option<&'t serde_json::Map<String, Value>> {
+    tools
+        .iter()
+        .find(|tool| tool.name == function)?
+        .parameters
+        .as_ref()?
+        .get("properties")?
+        .as_object()
+}
+
+/// The raw `(name, value)` pairs of a Qwen function body, in source order.
+///
+/// A value ends at its `</parameter>`. When the model leaves that closer out, the
+/// header of a parameter in `declared` that the call has not given yet ends the
+/// value instead, as any header does in vLLM's qwen3 parser; matching on to the
+/// next closer would swallow that parameter, and every one before the closer,
+/// into the open value. Any other header is literal value text. A value with
+/// neither runs to the end of the body.
+pub(crate) fn qwen_parameters<'a>(
+    body: &'a str,
+    declared: Option<&serde_json::Map<String, Value>>,
+) -> Vec<(&'a str, &'a str)> {
+    const START: &str = "<parameter=";
+    const END: &str = "</parameter>";
+    let header_name = |at: usize| {
+        let name_start = at + START.len();
+        body[name_start..]
+            .find('>')
+            .map(|len| &body[name_start..name_start + len])
+    };
+    let mut parameters = Vec::new();
+    let mut given = HashSet::new();
+    let mut cursor = 0;
+    while let Some(open) = body[cursor..].find(START).map(|at| cursor + at) {
+        let Some(name) = header_name(open) else {
+            break;
+        };
+        if name.is_empty() {
+            cursor = open + START.len();
+            continue;
+        }
+        given.insert(strip_quotes(name));
+        let value_start = open + START.len() + name.len() + 1;
+        let close = body[value_start..].find(END).map(|at| value_start + at);
+        let mut next_header = None;
+        if let Some(declared) = declared {
+            let region_end = close.unwrap_or(body.len());
+            let mut search = value_start;
+            while let Some(at) = body[search..region_end].find(START).map(|p| search + p) {
+                let Some(other) = header_name(at).map(strip_quotes) else {
+                    break;
+                };
+                if declared.contains_key(other) && !given.contains(other) {
+                    next_header = Some(at);
+                    break;
+                }
+                search = at + START.len();
+            }
+        }
+        let (value_end, next) = match (next_header, close) {
+            (Some(at), _) => (at, at),
+            (None, Some(at)) => (at, at + END.len()),
+            (None, None) => (body.len(), body.len()),
+        };
+        parameters.push((name, &body[value_start..value_end]));
+        cursor = next;
+    }
+    parameters
 }
 
 /// Extract argument configuration for a function from the tool definitions.

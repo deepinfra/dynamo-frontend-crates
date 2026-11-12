@@ -43,3 +43,4 @@ pub use response::{CalledFunctionStream, ToolCallResponseChunk, ToolCallType};
 pub use xml::{
     parse_glm47_invoke, parse_qwen_invoke, try_tool_call_parse_kimi_k2, try_tool_call_parse_xml,
 };
+pub(crate) use xml::{qwen_declared_parameters, qwen_parameters};

@@ -22,7 +22,9 @@ use crate::tool_calling::scan::{
     BareRecoveryLatch, InvokeBoundary, InvokeBoundaryFactory, InvokeEmitter, InvokeLatch,
     WrappedBlockScanner, WrappedBlockSpec, marker_prefix_suffix_len, reorder_arguments,
 };
-use crate::tool_calling::v1core::{ToolDefinition, parse_qwen_invoke};
+use crate::tool_calling::v1core::{
+    ToolDefinition, parse_qwen_invoke, qwen_declared_parameters, qwen_parameters,
+};
 
 use crate::tool_calling::traits::{Tool, ToolCallDelta, ToolParseResult, ToolParser};
 use std::collections::HashSet;
@@ -176,6 +178,11 @@ struct ActiveStringParameter {
     // Searching advances even when EOF recovery requires withholding value bytes.
     search_cursor: usize,
     ambiguous_function_close: Option<usize>,
+    /// Where the search for a header that ends this value resumes; a header
+    /// still waiting for its `>` is held here.
+    header_cursor: usize,
+    /// How far the held header's name has been searched for its `>`.
+    header_name_cursor: usize,
     at_start: bool,
     pending_newline: bool,
     started: bool,
@@ -217,6 +224,7 @@ impl InvokeEmitter for Qwen3Emitter {
         if partial.tool_index != tool_index || partial.blocked {
             return Ok(None);
         }
+        let declared = qwen_declared_parameters(&self.tools, &partial.name);
         let mut arguments = String::new();
         loop {
             if let Some(active) = partial.active.as_mut() {
@@ -241,9 +249,86 @@ impl InvokeEmitter for Qwen3Emitter {
                         .map(|offset| active.search_cursor + offset);
                 }
                 active.search_cursor = invoke.len() - qwen_partial_suffix_len(search);
-                let safe_end = close
+                // With its closer missing, the header of a declared parameter not
+                // given yet ends the value, as in `qwen_parameters`. Only a closer
+                // confirms bytes past an ambiguous function closer, so look no
+                // further than either.
+                let mut header_end = None;
+                let can_end_at_header = declared.is_some_and(|declared| {
+                    declared
+                        .keys()
+                        .any(|name| !partial.seen_parameters.contains(name))
+                });
+                if can_end_at_header {
+                    let limit = close
+                        .or(active.ambiguous_function_close)
+                        .unwrap_or(invoke.len());
+                    // Bytes past a closer found this push belong to it, not to a header.
+                    active.header_cursor = active.header_cursor.min(limit);
+                    let mut held = false;
+                    loop {
+                        let region = &invoke[active.header_cursor..limit];
+                        let found = region.find(PARAMETER_START);
+                        #[cfg(test)]
+                        {
+                            self.searched_bytes +=
+                                found.map_or(region.len(), |offset| offset + PARAMETER_START.len());
+                        }
+                        let Some(offset) = found else {
+                            break;
+                        };
+                        let at = active.header_cursor + offset;
+                        let name_start = at + PARAMETER_START.len();
+                        let from = active.header_name_cursor.max(name_start);
+                        let name_len = invoke[from..].find('>');
+                        #[cfg(test)]
+                        {
+                            self.searched_bytes +=
+                                name_len.map_or(invoke.len() - from, |len| len + 1);
+                        }
+                        active.header_cursor = at;
+                        let Some(name_len) = name_len else {
+                            active.header_name_cursor = invoke.len();
+                            held = true;
+                            break;
+                        };
+                        let name = invoke[name_start..from + name_len]
+                            .trim()
+                            .trim_matches('"')
+                            .trim();
+                        if declared.is_some_and(|declared| declared.contains_key(name))
+                            && !partial.seen_parameters.contains(name)
+                        {
+                            header_end = Some(at);
+                            break;
+                        }
+                        active.header_cursor = name_start;
+                        active.header_name_cursor = 0;
+                    }
+                    if header_end.is_none() && !held {
+                        active.header_cursor = if limit == invoke.len() {
+                            limit
+                                - marker_prefix_suffix_len(
+                                    &invoke[active.header_cursor..limit],
+                                    [PARAMETER_START],
+                                )
+                        } else {
+                            limit
+                        };
+                    }
+                }
+                let value_end = header_end.or(close);
+                let mut safe_end = value_end
                     .or(active.ambiguous_function_close)
                     .unwrap_or(active.search_cursor);
+                if can_end_at_header && value_end.is_none() {
+                    safe_end = safe_end.min(active.header_cursor);
+                }
+                let closer_len = if header_end.is_some() {
+                    0
+                } else {
+                    "</parameter>".len()
+                };
                 let mut fragment = String::new();
                 append_literal_string_fragment(
                     active,
@@ -256,15 +341,15 @@ impl InvokeEmitter for Qwen3Emitter {
                     active.opener_pending.clear();
                 }
                 arguments.push_str(&fragment);
-                if close.is_some() {
+                if value_end.is_some() {
                     if !active.started {
                         arguments.push_str(&active.opener_pending);
                         arguments.push('"');
-                        partial.scan_cursor = active.value_cursor + "</parameter>".len();
+                        partial.scan_cursor = active.value_cursor + closer_len;
                         partial.active = None;
                         continue;
                     }
-                    active.value_cursor += "</parameter>".len();
+                    active.value_cursor += closer_len;
                     arguments.push('"');
                     partial.scan_cursor = active.value_cursor;
                     partial.active = None;
@@ -331,6 +416,8 @@ impl InvokeEmitter for Qwen3Emitter {
                 value_cursor: value_start,
                 search_cursor: value_start,
                 ambiguous_function_close: None,
+                header_cursor: value_start,
+                header_name_cursor: 0,
                 at_start: true,
                 pending_newline: false,
                 started: false,
@@ -359,8 +446,11 @@ impl InvokeEmitter for Qwen3Emitter {
         let Some(call) = parse_qwen_invoke(invoke, &self.tools)? else {
             return Ok(None);
         };
-        let arguments =
-            reorder_arguments(&call.function.arguments, &source_parameter_order(invoke));
+        let order = source_parameter_order(
+            invoke,
+            qwen_declared_parameters(&self.tools, &call.function.name),
+        );
+        let arguments = reorder_arguments(&call.function.arguments, &order);
         let partial = self.partial.take();
         let streamed = partial
             .as_ref()
@@ -510,29 +600,18 @@ impl ToolParser for Qwen3CoderToolStreamParser {
     }
 }
 
-/// Parameter names in the order they appear in a function block.
-fn source_parameter_order(function: &str) -> Vec<String> {
-    let mut names = Vec::new();
-    let mut cursor = 0;
-    while let Some(rel) = function[cursor..].find(PARAMETER_START) {
-        let start = cursor + rel + PARAMETER_START.len();
-        let Some(header_end) = function[start..].find('>') else {
-            break;
-        };
-        let name = function[start..start + header_end]
-            .trim()
-            .trim_matches('"')
-            .trim();
-        if !name.is_empty() {
-            names.push(name.to_string());
-        }
-        let value_start = start + header_end + 1;
-        let Some(close) = function[value_start..].find("</parameter>") else {
-            break;
-        };
-        cursor = value_start + close + "</parameter>".len();
-    }
-    names
+/// Parameter names in the order they appear in a function block, split into
+/// parameters as `parse_qwen_invoke` splits them.
+fn source_parameter_order(
+    function: &str,
+    declared: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> Vec<String> {
+    qwen_parameters(function, declared)
+        .into_iter()
+        .map(|(name, _)| name.trim().trim_matches('"').trim())
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 #[cfg(test)]
@@ -656,6 +735,44 @@ mod tests {
     }
 
     #[test]
+    fn held_parameter_header_scanning_is_linear() {
+        let tools = create_file_tools();
+        let mut emitter = Qwen3Emitter {
+            tools: tools.iter().map(ToolDefinition::from).collect(),
+            partial: None,
+            searched_bytes: 0,
+        };
+        for length in [4096, 8192] {
+            emitter.reset();
+            emitter.searched_bytes = 0;
+            // `content` is declared and not given yet, so the header is held
+            // until its name ends.
+            let value = format!("prefix<parameter=c{}", "x".repeat(length));
+            let invoke =
+                format!("<function=create_file><parameter=path>{value}</parameter></function>");
+            let mut arguments = String::new();
+            for end in 1..=invoke.len() {
+                if let Some(delta) = emitter.parse_partial_invoke(&invoke[..end], 0).unwrap() {
+                    arguments.push_str(&delta.arguments);
+                }
+            }
+            if let Some(delta) = emitter.parse_invoke(&invoke, 0).unwrap() {
+                arguments.push_str(&delta.arguments);
+            }
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&arguments).unwrap(),
+                serde_json::json!({"path": value})
+            );
+            assert!(
+                emitter.searched_bytes <= 32 * invoke.len(),
+                "searched {} bytes for {} input bytes",
+                emitter.searched_bytes,
+                invoke.len()
+            );
+        }
+    }
+
+    #[test]
     fn missing_parameter_close_recovers_at_eof_at_every_split() {
         let input = "<tool_call>\n<function=get_weather>\n<parameter=location>\nNYC\n</function>\n</tool_call>";
         for split in 0..=input.len() {
@@ -678,6 +795,59 @@ mod tests {
                 .arguments,
             r#"{"location":"NYC"}"#
         );
+    }
+
+    #[test]
+    fn missing_parameter_close_ends_at_the_next_declared_parameter_at_every_split() {
+        let tools = vec![Tool {
+            name: "edit".to_string(),
+            description: None,
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" },
+                    "old_string": { "type": "string" },
+                    "new_string": { "type": "string" },
+                    "count": { "type": "integer" }
+                }
+            }),
+            strict: None,
+        }];
+        for (input, expected) in [
+            // A missing `</parameter>` used to pull the parameters after it into
+            // its value, so required parameters went missing.
+            (
+                "<tool_call>\n<function=edit>\n<parameter=path>\na.py\n<parameter=old_string>\nx = 1\n</parameter>\n<parameter=new_string>\nx = 2\n</function>\n</tool_call>",
+                serde_json::json!({"path": "a.py", "old_string": "x = 1", "new_string": "x = 2"}),
+            ),
+            (
+                "<tool_call>\n<function=edit>\n<parameter=path>\na.py\n<parameter=count>\n3\n</parameter>\n</function>\n</tool_call>",
+                serde_json::json!({"path": "a.py", "count": 3}),
+            ),
+            // Headers for a parameter already given or not declared stay text.
+            (
+                "<tool_call>\n<function=edit>\n<parameter=path>\na.py\n</parameter>\n<parameter=new_string>\nsee <parameter=path> and <parameter=other>\n</parameter>\n</function>\n</tool_call>",
+                serde_json::json!({"path": "a.py", "new_string": "see <parameter=path> and <parameter=other>"}),
+            ),
+        ] {
+            let chunks: Vec<_> = input
+                .char_indices()
+                .map(|(at, c)| &input[at..at + c.len_utf8()])
+                .collect();
+            let schedules = (0..=input.len())
+                .map(|split| vec![&input[..split], &input[split..]])
+                .chain(std::iter::once(chunks));
+            for schedule in schedules {
+                let output = parse_chunks(&tools, &schedule).coalesce_calls();
+                assert_eq!(output.calls.len(), 1, "{schedule:?}");
+                assert!(output.calls[0].complete, "{schedule:?}");
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&output.calls[0].arguments).unwrap(),
+                    expected,
+                    "{schedule:?}"
+                );
+            }
+        }
     }
 
     #[test]
