@@ -371,10 +371,11 @@ fn glm_enum_hints_preserve_native_string_ambiguity() {
         (json!({"enum":[true,false]}), "true", json!(true)),
         (json!({"enum":["42"]}), "42", json!("42")),
         (json!({"enum":[1,"auto"]}), "1", json!("1")),
+        // A typed string enum branch admits only its members as strings.
         (
             json!({"anyOf":[{"type":"string","enum":["auto"]},{"type":"integer"}]}),
             "42",
-            json!("42"),
+            json!(42),
         ),
         (json!({"type":"number","enum":[1,"auto"]}), "1", json!(1)),
         (

@@ -6,7 +6,7 @@
 // Reference: https://huggingface.co/zai-org/GLM-4.7/blob/main/chat_template.jinja
 
 use regex::Regex;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use tracing::warn;
 use uuid::Uuid;
@@ -593,7 +593,7 @@ const MAX_NULL_SCHEMA_NODES: usize = 4096;
 
 // Only a proven match may turn the model's text into JSON null. Unknown references
 // must remain unknown through negation and oneOf, rather than counting as false.
-fn schema_permits_null(schema: &Value, root: &Value) -> bool {
+pub(super) fn schema_permits_null(schema: &Value, root: &Value) -> bool {
     let mut active_refs = vec![schema];
     let mut remaining = MAX_NULL_SCHEMA_NODES;
     schema_null_match(schema, root, &mut active_refs, 0, &mut remaining) == Some(true)
@@ -811,13 +811,12 @@ fn schema_type_match(
     };
     let enum_hint = match schema.get("enum").and_then(Value::as_array) {
         Some(values) if !values.is_empty() => {
-            // Mixed enums keep their string fallback. A string hint must match
-            // raw text so it cannot shadow another union branch.
+            // Mixed enums keep their string fallback. Like a string const, a
+            // string reading must match raw text: otherwise a typed string enum
+            // branch (`{"type": "string", "enum": ["forever"]}`) would shadow
+            // another union branch such as `{"type": "integer"}`.
             if expected == "string" {
-                values
-                    .iter()
-                    .any(|value| value.as_str() == Some(raw))
-                    .then_some(true)
+                Some(values.iter().any(|value| value.as_str() == Some(raw)))
             } else {
                 values.iter().try_fold(false, |matched, value| {
                     (!value.is_string()).then(|| matched || value_matches(value))
@@ -856,6 +855,31 @@ fn schema_type_match(
         };
     }
     hint
+}
+
+// GLM sometimes writes an array/object argument as JSON and then carries on with the
+// call's remaining arguments as JSON members inside the same value:
+// `[{...}],"postId": 246540,"sku": "116212"}`. The whole text is not JSON, so it fell
+// through to comma splitting. Split it into the leading JSON value and the trailing
+// members (lifted to arguments when absent); unparseable trailing text is dropped.
+fn split_trailing_members(raw: &str) -> Option<(&str, Map<String, Value>)> {
+    let trimmed = raw.trim();
+    if !(trimmed.starts_with('[') || trimmed.starts_with('{'))
+        || serde_json::from_str::<Value>(trimmed).is_ok()
+    {
+        return None;
+    }
+    let mut stream = serde_json::Deserializer::from_str(trimmed).into_iter::<Value>();
+    stream.next()?.ok()?;
+    let head = &trimmed[..stream.byte_offset()];
+    let rest = trimmed[head.len()..].trim_start();
+    let members = rest
+        .strip_prefix(',')
+        .and_then(|members| {
+            serde_json::from_str::<Map<String, Value>>(&format!("{{{members}")).ok()
+        })
+        .unwrap_or_default();
+    Some((head, members))
 }
 
 /// Parse a single GLM-4.7 tool call block
@@ -912,13 +936,20 @@ fn parse_tool_call_block(
 
     let regex = Regex::new(&pattern)?;
 
+    let mut trailing_members: Vec<(String, Value)> = Vec::new();
     for cap in regex.captures_iter(args_section) {
         let key = cap.get(1).map(|m| m.as_str().trim()).unwrap_or("");
-        let raw_value = cap.get(2).map(|m| m.as_str()).unwrap_or("");
+        let mut raw_value = cap.get(2).map(|m| m.as_str()).unwrap_or("");
 
         if !key.is_empty() {
             // Look up the expected type from the tool's parameter schema
             let schema_type = get_param_schema_type(tools, &function_name, key, raw_value);
+            if matches!(schema_type, Some("array" | "object"))
+                && let Some((head, members)) = split_trailing_members(raw_value)
+            {
+                raw_value = head;
+                trailing_members.extend(members);
+            }
             let json_value = coerce_value(raw_value, schema_type);
 
             match argument_indices.get(key).copied() {
@@ -929,6 +960,19 @@ fn parse_tool_call_block(
                 }
             }
         }
+    }
+
+    for (key, value) in trailing_members {
+        if !arguments.iter().any(|(present, _)| *present == key) {
+            arguments.push((key, value.into()));
+        }
+    }
+
+    if let Some(schema) = tools
+        .and_then(|tools| tools.iter().find(|t| t.name == function_name))
+        .and_then(|tool| tool.parameters.as_ref())
+    {
+        super::glm47_conform::conform_arguments(schema, &mut arguments);
     }
 
     // Preserve unknown calls; executors must authorize names against request-scoped tools.
@@ -1149,6 +1193,39 @@ mod tests {
                 expected,
                 "schema={parameter}, raw={raw:?}"
             );
+        }
+    }
+
+    #[test]
+    fn enum_only_string_branches_do_not_capture_other_values() {
+        let tools = vec![ToolDefinition {
+            name: "set_value".into(),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "ttl": {"anyOf": [{"type": "integer"}, {"type": "string", "enum": ["forever"]}]},
+                    "mode": {"oneOf": [{"const": "auto"}, {"type": "number"}, {"type": "boolean"}]},
+                    "label": {"anyOf": [{"type": "string"}, {"type": "integer"}]}
+                }
+            })),
+            strict: None,
+        }];
+        for (key, wire_value, expected) in [
+            ("ttl", "3600", serde_json::json!(3600)),
+            ("ttl", "forever", serde_json::json!("forever")),
+            ("mode", "auto", serde_json::json!("auto")),
+            ("mode", "0.5", serde_json::json!(0.5)),
+            ("mode", "false", serde_json::json!(false)),
+            // An unconstrained string branch keeps the string preference.
+            ("label", "42", serde_json::json!("42")),
+        ] {
+            let wire = format!(
+                "<tool_call>set_value<arg_key>{key}</arg_key><arg_value>{wire_value}</arg_value></tool_call>"
+            );
+            let (calls, _) =
+                try_tool_call_parse_glm47(&wire, &get_test_config(), Some(&tools)).unwrap();
+            let arguments: Value = serde_json::from_str(&calls[0].function.arguments).unwrap();
+            assert_eq!(arguments[key], expected, "{key}={wire_value}");
         }
     }
 
@@ -2444,6 +2521,140 @@ mod tests {
             assert_eq!(args["city"], expected, "{label}");
         }
     }
+
+    fn parse_probe_call(parameters: Value, wire_args: &str) -> (Value, String) {
+        let tools = vec![ToolDefinition {
+            name: "probe".into(),
+            parameters: Some(parameters),
+            strict: None,
+        }];
+        let wire = format!("<tool_call>probe{wire_args}</tool_call>");
+        let (calls, _) =
+            try_tool_call_parse_glm47(&wire, &get_test_config(), Some(&tools)).unwrap();
+        assert_eq!(calls.len(), 1);
+        let raw = calls[0].function.arguments.clone();
+        (serde_json::from_str(&raw).unwrap(), raw)
+    }
+
+    #[test]
+    fn omitted_required_nullable_arguments_are_filled_with_null() {
+        let parameters = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "notify": {"type": ["boolean", "null"]},
+                "timeout": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
+                "workdir": {"$ref": "#/$defs/nullable_path"},
+                "legacy": {"type": "string", "nullable": true},
+                "label": {"type": "string"},
+                "mode": {"enum": ["fast", "slow"]},
+                "note": {"type": ["string", "null"]}
+            },
+            "required": ["command", "notify", "timeout", "workdir", "legacy", "label", "mode", "notify"],
+            "$defs": {"nullable_path": {"type": ["string", "null"]}}
+        });
+        let (arguments, raw) = parse_probe_call(
+            parameters.clone(),
+            "<arg_key>command</arg_key><arg_value>ls</arg_value>",
+        );
+        // An unconstrained required string gets "", a constrained one (enum) stays
+        // missing, optional ones stay absent, and a key listed twice in `required` is
+        // filled once.
+        assert_eq!(
+            arguments,
+            serde_json::json!({
+                "command": "ls", "notify": null, "timeout": null, "workdir": null, "legacy": null,
+                "label": ""
+            })
+        );
+        assert_eq!(raw.matches("\"notify\"").count(), 1, "{raw}");
+        assert!(
+            raw.starts_with("{\"command\":\"ls\""),
+            "emitted order first: {raw}"
+        );
+
+        let (arguments, _) = parse_probe_call(
+            parameters,
+            "<arg_key>command</arg_key><arg_value>ls</arg_value>\
+             <arg_key>notify</arg_key><arg_value>true</arg_value>\
+             <arg_key>timeout</arg_key><arg_value>30</arg_value>",
+        );
+        assert_eq!(arguments["notify"], serde_json::json!(true));
+        assert_eq!(arguments["timeout"], serde_json::json!(30));
+        assert_eq!(arguments["workdir"], Value::Null);
+    }
+
+    #[test]
+    fn omitted_annotation_only_required_argument_is_filled_with_null() {
+        // Hermes `terminal`: `notify` is required but carries only a description.
+        let parameters = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "command": {"type": "string"},
+                "notify": {"description": "Notify when the command finishes."}
+            },
+            "required": ["command", "notify"]
+        });
+        let (arguments, _) = parse_probe_call(
+            parameters,
+            "<arg_key>command</arg_key><arg_value>ls</arg_value>",
+        );
+        assert_eq!(
+            arguments,
+            serde_json::json!({"command": "ls", "notify": null})
+        );
+    }
+
+    #[test]
+    fn omitted_required_nullable_fields_are_filled_inside_object_arguments() {
+        let parameters = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "filter": {"$ref": "#/$defs/filter"},
+                "items": {"type": "array", "items": {
+                    "type": "object",
+                    "properties": {"id": {"type": "string"}, "tag": {"type": ["string", "null"]}},
+                    "required": ["id", "tag"]
+                }}
+            },
+            "required": ["filter", "items"],
+            "$defs": {"filter": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}, "limit": {"type": ["integer", "null"]}},
+                "required": ["query", "limit"]
+            }}
+        });
+        let (arguments, _) = parse_probe_call(
+            parameters,
+            r#"<arg_key>filter</arg_key><arg_value>{"query": "x"}</arg_value><arg_key>items</arg_key><arg_value>[{"id": "a"}, {"id": "b", "tag": "t"}, {"tag": null}]</arg_value>"#,
+        );
+        assert_eq!(
+            arguments,
+            serde_json::json!({
+                "filter": {"query": "x", "limit": null},
+                "items": [{"id": "a", "tag": null}, {"id": "b", "tag": "t"}, {"tag": null, "id": ""}]
+            })
+        );
+    }
+
+    #[test]
+    fn calls_without_a_matching_tool_schema_are_not_filled() {
+        let tools = vec![ToolDefinition {
+            name: "other".into(),
+            parameters: Some(serde_json::json!({
+                "type": "object",
+                "properties": {"a": {"type": ["string", "null"]}},
+                "required": ["a"]
+            })),
+            strict: None,
+        }];
+        let wire = "<tool_call>probe<arg_key>b</arg_key><arg_value>x</arg_value></tool_call>";
+        for tools in [Some(tools.as_slice()), None] {
+            let (calls, _) = try_tool_call_parse_glm47(wire, &get_test_config(), tools).unwrap();
+            let arguments: Value = serde_json::from_str(&calls[0].function.arguments).unwrap();
+            assert_eq!(arguments, serde_json::json!({"b": "x"}));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -2494,9 +2705,11 @@ mod enum_const_type_hint {
             run(serde_json::json!({"enum":["{\"x\":1}"]}), "{\"x\":1}"),
             serde_json::json!("{\"x\":1}")
         );
+        // A mixed enum gives no type hint, so "1" parses as text; the schema
+        // conformance pass then replaces it with the enum member it spells.
         assert_eq!(
             run(serde_json::json!({"enum":[1,"a"]}), "1"),
-            serde_json::json!("1")
+            serde_json::json!(1)
         );
     }
 

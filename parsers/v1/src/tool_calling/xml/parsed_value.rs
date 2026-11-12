@@ -10,6 +10,16 @@ pub(super) enum ParsedValue {
     RawNumber(Box<RawValue>),
 }
 
+impl ParsedValue {
+    pub(super) fn into_value(self) -> Value {
+        match self {
+            Self::Json(value) => value,
+            Self::RawNumber(raw) => serde_json::from_str(raw.get())
+                .unwrap_or_else(|_| Value::String(raw.get().to_string())),
+        }
+    }
+}
+
 impl From<Value> for ParsedValue {
     fn from(value: Value) -> Self {
         Self::Json(value)

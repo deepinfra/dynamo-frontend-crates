@@ -798,6 +798,32 @@ mod tests {
     }
 
     #[test]
+    fn enum_only_string_branches_do_not_capture_other_values() {
+        let ttl = serde_json::json!({
+            "anyOf": [{"type": "integer"}, {"type": "string", "enum": ["forever"]}]
+        });
+        let mode = serde_json::json!({
+            "oneOf": [{"const": "auto"}, {"type": "number"}, {"type": "boolean"}]
+        });
+        let label = serde_json::json!({"anyOf": [{"type": "string"}, {"type": "integer"}]});
+        for (parameter, raw, expected) in [
+            (&ttl, "3600", serde_json::json!(3600)),
+            (&ttl, "forever", serde_json::json!("forever")),
+            (&mode, "auto", serde_json::json!("auto")),
+            (&mode, "0.5", serde_json::json!(0.5)),
+            (&mode, "false", serde_json::json!(false)),
+            // An unconstrained string branch keeps the string preference.
+            (&label, "42", serde_json::json!("42")),
+        ] {
+            assert_eq!(
+                parse_schema_value(parameter.clone(), raw),
+                expected,
+                "schema={parameter}, raw={raw:?}"
+            );
+        }
+    }
+
+    #[test]
     fn inline_unions_preserve_string_hints_within_node_budget() {
         let mut parameter = serde_json::json!({"type": "string"});
         for keyword in ["anyOf", "oneOf", "allOf"].into_iter().cycle().take(16) {

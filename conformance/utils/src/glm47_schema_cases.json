@@ -1787,11 +1787,11 @@
         }
       ]
     },
-    "value": "42",
+    "value": 42,
     "raw": "42",
     "grammar": false,
     "conformance": false,
-    "note": "Existing unrestricted string hint wins; parser-only compatibility control, string 42 is schema-invalid."
+    "note": "A string enum admits the string reading only for its members, so 42 takes the integer branch; parser-only control."
   },
   {
     "name": "type_array_string_integer",

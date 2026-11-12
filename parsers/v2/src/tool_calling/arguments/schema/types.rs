@@ -188,7 +188,11 @@ fn collect_type_constraints(
         && let Some(values) = schema.get("enum").and_then(Value::as_array)
         && match context.literals {
             LiteralTypes::All | LiteralTypes::DeclaredFirst => true,
-            LiteralTypes::StringHint(raw) => values.iter().any(|value| value.as_str() == Some(raw)),
+            // Like a string const, an enum admits the string reading only when raw
+            // text is a member, so a typed string enum branch
+            // (`{"type": "string", "enum": ["forever"]}`) cannot shadow another
+            // union branch such as `{"type": "integer"}`.
+            LiteralTypes::StringHint(_) => !values.is_empty(),
             LiteralTypes::ScalarHints => values.iter().all(|value| !value.is_string()),
             LiteralTypes::None => false,
         }
