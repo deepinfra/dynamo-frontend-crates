@@ -303,6 +303,24 @@ fn encode_owned_messages(
     )
 }
 
+/// Request tools as the reference encoder renders them: each `function` exactly as the
+/// client sent it. `tools()` adds the Jinja schema backfill (an empty `description`,
+/// `type`/`properties` on empty parameters) that neither the official template nor
+/// vLLM renders. Custom tools keep the function form `tools()` converts them to.
+fn reference_tools(req: &dyn crate::OAIChatLikeRequest) -> Result<Option<Vec<Value>>> {
+    let Some(Value::Array(mut tools)) = req.tools().map(serde_json::to_value).transpose()? else {
+        return Ok(None);
+    };
+    if let Some(Value::Array(raw)) = req.raw_tools().map(serde_json::to_value).transpose()? {
+        for (tool, raw) in tools.iter_mut().zip(raw) {
+            if raw.get("function").is_some() {
+                *tool = raw;
+            }
+        }
+    }
+    Ok(Some(tools))
+}
+
 /// Native text/image formatter with OpenAI reasoning-effort names mapped as in the
 /// DeepSeek V4.1 reference encoder.
 #[derive(Debug, Default)]
@@ -385,23 +403,16 @@ impl crate::OAIPromptFormatter for DeepSeekV41Formatter {
         };
         let tools_enabled =
             req.tool_choice().as_ref().and_then(|value| value.as_str()) != Some("none");
-        let tools = req
-            .tools()
-            .filter(|tools| tools_enabled && tools.len().is_some_and(|length| length > 0))
-            .map(serde_json::to_value)
-            .transpose()?;
-        let response_format = req
-            .response_format()
-            .map(serde_json::to_value)
-            .transpose()?;
-        if tools.is_some() || response_format.is_some() {
-            let developer_tools_would_be_overwritten = tools.is_some()
-                && messages.first().is_some_and(|message| {
-                    message.get("role").and_then(Value::as_str) == Some("developer")
-                        && message.get("tools").is_some_and(|tools| {
-                            !tools.is_null() && !tools.as_array().is_some_and(Vec::is_empty)
-                        })
-                });
+        let tools = reference_tools(req)?.filter(|tools| tools_enabled && !tools.is_empty());
+        // The official template and vLLM never render a top-level response_format;
+        // it is enforced by guided decoding, not by the prompt.
+        if let Some(tools) = tools {
+            let developer_tools_would_be_overwritten = messages.first().is_some_and(|message| {
+                message.get("role").and_then(Value::as_str) == Some("developer")
+                    && message.get("tools").is_some_and(|tools| {
+                        !tools.is_null() && !tools.as_array().is_some_and(Vec::is_empty)
+                    })
+            });
             if developer_tools_would_be_overwritten
                 || !matches!(
                     messages
@@ -413,12 +424,7 @@ impl crate::OAIPromptFormatter for DeepSeekV41Formatter {
             {
                 messages.insert(0, serde_json::json!({"role": "system", "content": ""}));
             }
-            if let Some(tools) = tools {
-                messages[0]["tools"] = tools;
-            }
-            if let Some(response_format) = response_format {
-                messages[0]["response_format"] = response_format;
-            }
+            messages[0]["tools"] = Value::Array(tools);
         }
         encode_owned_messages(
             messages,

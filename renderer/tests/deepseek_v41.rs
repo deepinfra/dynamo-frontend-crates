@@ -40,6 +40,9 @@ impl dynamo_renderer::OAIChatLikeRequest for Request {
     fn tools(&self) -> Option<minijinja::Value> {
         self.request.tools()
     }
+    fn raw_tools(&self) -> Option<minijinja::Value> {
+        self.request.raw_tools()
+    }
     fn tool_choice(&self) -> Option<minijinja::Value> {
         self.request.tool_choice()
     }
@@ -217,7 +220,7 @@ fn mid_system_preserves_generation_header_and_reasoning_cutoff() {
 }
 
 #[test]
-fn tool_choice_none_omits_schema_and_keeps_response_format() {
+fn tool_choice_none_omits_schema_and_response_format() {
     let output = render(
         json!({"reasoning_effort":"none", "tool_choice":"none", "tools":[
         {"type":"function","function":{"name":"weather","parameters":{"type":"object"}}}
@@ -225,7 +228,56 @@ fn tool_choice_none_omits_schema_and_keeps_response_format() {
     )
     .unwrap();
     assert!(!output.contains("weather"));
-    assert!(output.contains("## Response Format:"));
+    assert!(!output.contains("## Response Format:"));
+}
+
+#[test]
+fn response_format_is_left_to_guided_decoding() {
+    // Neither the official template nor vLLM renders a top-level response_format.
+    let schema =
+        json!({"type":"json_schema","json_schema":{"name":"x","schema":{"type":"object"}}});
+    assert_eq!(
+        render(json!({"response_format":schema})).unwrap(),
+        render(json!({})).unwrap()
+    );
+    let tools =
+        json!([{"type":"function","function":{"name":"weather","parameters":{"type":"object"}}}]);
+    let output = render(json!({"tools":tools,"response_format":schema})).unwrap();
+    assert!(output.contains("{\"name\": \"weather\""));
+    assert!(!output.contains("## Response Format:"));
+}
+
+#[test]
+fn tool_schemas_render_as_sent_like_the_official_template() {
+    // Expected prompt is the official chat template's output (revision 314113f8)
+    // for the same request: no empty description or `type`/`properties` backfill.
+    let tools = json!([
+        {"type":"function","function":{"name":"lookup","parameters":{"type":"object","properties":{
+            "x":{"type":"number","minimum":1e-05,"maximum":1e16,"default":0.0001}}}}},
+        {"type":"function","function":{"name":"strict_one","description":"d","parameters":{},"strict":true}}
+    ]);
+    let output = render(json!({"tools":tools})).unwrap();
+    let schemas = concat!(
+        r#"{"name": "lookup", "parameters": {"type": "object", "properties": {"x": {"type": "number", "minimum": 1e-05, "maximum": 1e+16, "default": 0.0001}}}}"#,
+        "\n",
+        r#"{"name": "strict_one", "description": "d", "parameters": {}, "strict": true}"#,
+    );
+    assert_eq!(
+        output,
+        format!(
+            "<｜begin▁of▁sentence｜><｜System｜>Reasoning Effort: 75 (range 1-100, the higher the value, the more thorough the reasoning)\n\n\n\n## Tools\n\nYou have access to a set of tools to help answer the user's question. You can invoke tools by writing a \"<｜DSML｜ calls>\" block like the following:\n\n<｜DSML｜ calls>\n<｜DSML｜ invoke name=\"$TOOL_NAME\">\n<｜DSML｜ parameter name=\"$PARAMETER_NAME\" string=\"true|false\">$PARAMETER_VALUE</｜DSML｜ parameter>\n...\n</｜DSML｜ invoke>\n<｜DSML｜ invoke name=\"$TOOL_NAME2\">\n...\n</｜DSML｜ invoke>\n</｜DSML｜ calls>\n\nString parameters should be specified as is and set `string=\"true\"`. For all other types (numbers, booleans, arrays, objects), pass the value in JSON format and set `string=\"false\"`.\n\nIf thinking_mode is enabled (triggered by <think>), you MUST output your complete reasoning inside <think>...</think> BEFORE any tool calls or final response.\n\nOtherwise, output directly after </think> with tool calls or final response.\n\n### Available Tool Schemas\n\n{schemas}\n\nYou MUST strictly follow the above defined tool name and parameter schemas to invoke tool calls.\n<｜User｜>Hello<｜Assistant｜><think>"
+        )
+    );
+
+    // Custom tools keep their function-form conversion.
+    let output = render(json!({"tools":[
+        {"type":"custom","custom":{"name":"apply_patch","description":"Apply a patch"}}
+    ]}))
+    .unwrap();
+    assert!(
+        output
+            .contains(r#"{"name": "apply_patch", "description": "Apply a patch", "parameters": "#)
+    );
 }
 
 #[test]
