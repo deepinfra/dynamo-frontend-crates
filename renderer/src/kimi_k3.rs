@@ -794,12 +794,19 @@ fn tool_call_index(tool_calls: Option<&Value>) -> HashMap<String, (usize, Option
 fn normalize_tool_result_messages(messages: Vec<Value>) -> Result<Vec<Value>> {
     let mut output = Vec::with_capacity(messages.len());
     let mut current_index = HashMap::new();
+    // Tool names by call id, for every earlier assistant message.
+    let mut earlier_names: HashMap<String, String> = HashMap::new();
     let mut messages = messages.into_iter().peekable();
 
     while let Some(message) = messages.peek() {
         let role = message.get("role").and_then(Value::as_str);
         if role == Some("assistant") {
             current_index = tool_call_index(message.get("tool_calls"));
+            for (id, (_, name)) in &current_index {
+                if let Some(name) = name {
+                    earlier_names.insert(id.clone(), name.clone());
+                }
+            }
             output.push(messages.next().expect("peeked message"));
             continue;
         }
@@ -831,7 +838,24 @@ fn normalize_tool_result_messages(messages: Vec<Value>) -> Result<Vec<Value>> {
         }
 
         if unresolved {
-            output.extend(run.into_iter().map(|(_, _, message, _)| message));
+            // Keep arrival order, but name each result whose id an earlier
+            // assistant call carries. Clients send results after a text-only
+            // assistant turn, or more results than calls.
+            output.extend(run.into_iter().map(|(_, _, mut message, _)| {
+                let name = message
+                    .get("tool_call_id")
+                    .or_else(|| message.get("id"))
+                    .and_then(Value::as_str)
+                    .and_then(|id| earlier_names.get(id))
+                    .cloned();
+                if let (Some(name), Some(object)) = (name, message.as_object_mut())
+                    && !object.contains_key("tool")
+                    && !object.contains_key("name")
+                {
+                    object.insert("tool".to_string(), Value::String(name));
+                }
+                message
+            }));
             continue;
         }
         run.sort_by_key(|(tool_position, offset, _, _)| (*tool_position, *offset));
@@ -977,14 +1001,22 @@ fn build_chat_segments(
                     .map(|call| call.get("function").unwrap_or(call))
                     .and_then(|function| function.get("name"))
                     .and_then(Value::as_str);
+                // A result no call can name still renders, under the name its
+                // K3-style id carries (`name:index`) or `unknown`, instead of
+                // failing the whole request.
+                let id_name = message
+                    .get("tool_call_id")
+                    .and_then(Value::as_str)
+                    .and_then(|id| id.rsplit_once(':'))
+                    .map(|(name, _)| name.strip_prefix("functions.").unwrap_or(name))
+                    .filter(|name| !name.is_empty());
                 let tool_name = message
                     .get("tool")
                     .or_else(|| message.get("name"))
                     .and_then(Value::as_str)
                     .or(fallback_name)
-                    .context(
-                        "Kimi K3 tool messages need a tool/name or a preceding assistant tool call",
-                    )?;
+                    .or(id_name)
+                    .unwrap_or("unknown");
                 open_tag(
                     &mut segments,
                     "message",
@@ -2171,6 +2203,62 @@ mod tests {
         );
         assert!(
             rendered.ends_with("<|open|>message role=\"assistant\"<|sep|><|open|>think<|sep|>")
+        );
+    }
+
+    #[test]
+    fn unmatched_tool_results_render_instead_of_failing() {
+        let call = |id: &str, name: &str| {
+            json!({"id": id, "type": "function",
+            "function": {"name": name, "arguments": "{\"city\":\"Oslo\"}"}})
+        };
+        // result after a text-only assistant turn: named by the earlier call id
+        let after_text = Request::new(json!([
+            {"role": "user", "content": "weather?"},
+            {"role": "assistant", "content": "", "tool_calls": [call("a1", "get_weather")]},
+            {"role": "assistant", "content": "checking"},
+            {"role": "tool", "tool_call_id": "a1", "content": "-3"}
+        ]));
+        let rendered = fmt().render(&after_text).unwrap();
+        assert!(
+            rendered.contains(
+                "<|open|>message role=\"tool\" tool=\"get_weather\" index=\"1\"<|sep|>-3"
+            ),
+            "{rendered}"
+        );
+
+        // more results than calls: the extra one takes its K3 id's name, or `unknown`
+        let extra = Request::new(json!([
+            {"role": "user", "content": "weather?"},
+            {"role": "assistant", "content": "", "tool_calls": [call("a1", "get_weather")]},
+            {"role": "tool", "tool_call_id": "a1", "content": "-3"},
+            {"role": "tool", "tool_call_id": "get_time:1", "content": "noon"},
+            {"role": "tool", "tool_call_id": "zz", "content": "5"}
+        ]));
+        let rendered = fmt().render(&extra).unwrap();
+        assert!(
+            rendered.contains("tool=\"get_weather\" index=\"1\"<|sep|>-3"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("tool=\"get_time\" index=\"2\"<|sep|>noon"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("tool=\"unknown\" index=\"3\"<|sep|>5"),
+            "{rendered}"
+        );
+
+        // no assistant call at all
+        let orphan = Request::new(json!([
+            {"role": "user", "content": "hi"},
+            {"role": "tool", "tool_call_id": "x", "content": "data"}
+        ]));
+        assert!(
+            fmt()
+                .render(&orphan)
+                .unwrap()
+                .contains("tool=\"unknown\" index=\"1\"<|sep|>data")
         );
     }
 

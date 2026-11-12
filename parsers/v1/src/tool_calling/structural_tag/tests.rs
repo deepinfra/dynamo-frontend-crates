@@ -1226,3 +1226,28 @@ fn parser_map_structural_tag_smoke() {
         assert_eq!(tag["type"], "structural_tag", "'{name}'");
     }
 }
+
+#[test]
+fn kimi_k3_reasoning_prefix_is_optional() {
+    // A worker with vLLM's --reasoning-parser opens the grammar after the think block;
+    // one without it applies the grammar from the first token. Both must be able to end.
+    let tools = sample_tools();
+    for choice in [
+        ToolChoice::Auto,
+        ToolChoice::Required,
+        ToolChoice::Named("get_weather".to_string()),
+    ] {
+        let c = ctx_starting_in_reasoning(&choice, &tools);
+        let parsed = StructuralTagBuilder::KimiK3
+            .build_tool_call_format(&c)
+            .expect("build should not error")
+            .expect("build should return Some");
+        let prefix = &parsed["format"]["elements"][0];
+        assert_eq!(prefix["type"], "optional");
+        assert_eq!(prefix["content"]["end"], "<|close|>think<|sep|>");
+        assert_eq!(
+            prefix["content"]["content"]["excludes"],
+            json!(["<|open|>"])
+        );
+    }
+}

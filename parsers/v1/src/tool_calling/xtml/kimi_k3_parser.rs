@@ -176,14 +176,102 @@ pub fn find_tool_call_end_position_kimi_k3(
 pub fn try_tool_call_parse_kimi_k3(
     message: &str,
     config: &KimiK3ParserConfig,
-    _tools: Option<&[ToolDefinition]>,
+    tools: Option<&[ToolDefinition]>,
 ) -> anyhow::Result<(Vec<ToolCallResponse>, Option<String>)> {
     let normalized = normalize_spaced_markers(message);
     let sanitized = strip_orphan_think_close(normalized.as_ref());
     let message = sanitized.as_ref();
     let normal_text = extract_response_text(message);
-    let calls = extract_calls(message, config);
+    let mut calls = extract_calls(message, config);
+    if let Some(tools) = tools {
+        enforce_string_length_bounds(&mut calls, tools);
+    }
     Ok((calls, Some(normal_text)))
+}
+
+// The K3 structural tag leaves string `maxLength` out of the grammar (a counted
+// repeat stalls XGrammar's mask fill), so a string can run past its bound. Cut
+// it to the bound here: the value a grammar enforcing `maxLength` would produce.
+// Calls within their bounds keep the parser's own serialization.
+fn enforce_string_length_bounds(calls: &mut [ToolCallResponse], tools: &[ToolDefinition]) {
+    for call in calls {
+        let Some(schema) = tools
+            .iter()
+            .find(|tool| tool.name == call.function.name)
+            .and_then(|tool| tool.parameters.as_ref())
+        else {
+            continue;
+        };
+        let Ok(mut arguments) = serde_json::from_str::<Value>(&call.function.arguments) else {
+            continue;
+        };
+        if truncate_over_long_strings(&mut arguments, schema, schema, 0)
+            && let Ok(serialized) = serde_json::to_string(&arguments)
+        {
+            call.function.arguments = serialized;
+        }
+    }
+}
+
+fn truncate_over_long_strings(
+    value: &mut Value,
+    schema: &Value,
+    root: &Value,
+    depth: usize,
+) -> bool {
+    if depth > 32 {
+        return false;
+    }
+    let Some(object) = schema.as_object() else {
+        return false;
+    };
+    if let Some(target) = object
+        .get("$ref")
+        .and_then(Value::as_str)
+        .and_then(|reference| reference.strip_prefix('#'))
+        .and_then(|pointer| root.pointer(pointer))
+    {
+        return truncate_over_long_strings(value, target, root, depth + 1);
+    }
+    match value {
+        Value::String(text) => {
+            let Some(max) = object.get("maxLength").and_then(Value::as_u64) else {
+                return false;
+            };
+            let max = usize::try_from(max).unwrap_or(usize::MAX);
+            // JSON Schema counts code points, as `chars()` does.
+            match text.char_indices().nth(max) {
+                Some((cut, _)) => {
+                    text.truncate(cut);
+                    true
+                }
+                None => false,
+            }
+        }
+        Value::Object(map) => {
+            let Some(properties) = object.get("properties").and_then(Value::as_object) else {
+                return false;
+            };
+            let mut changed = false;
+            for (key, item) in map.iter_mut() {
+                if let Some(item_schema) = properties.get(key) {
+                    changed |= truncate_over_long_strings(item, item_schema, root, depth + 1);
+                }
+            }
+            changed
+        }
+        Value::Array(items) => {
+            let Some(item_schema) = object.get("items").filter(|items| items.is_object()) else {
+                return false;
+            };
+            let mut changed = false;
+            for item in items {
+                changed |= truncate_over_long_strings(item, item_schema, root, depth + 1);
+            }
+            changed
+        }
+        _ => false,
+    }
 }
 
 fn strip_orphan_think_close(message: &str) -> Cow<'_, str> {
@@ -557,6 +645,52 @@ mod tests {
         let (calls, normal) =
             try_tool_call_parse_kimi_k3(input, &KimiK3ParserConfig::default(), None).unwrap();
         (calls, normal.unwrap())
+    }
+
+    #[test]
+    fn strings_over_max_length_are_cut_to_the_bound() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "maxLength": 5},
+                "meta": {"$ref": "#/$defs/Meta"},
+                "tags": {"type": "array", "items": {"type": "string", "maxLength": 2}},
+                "free": {"type": "string"}
+            },
+            "$defs": {"Meta": {"type": "object", "properties": {"tag": {"type": "string", "maxLength": 3}}}}
+        });
+        let defs = [ToolDefinition {
+            name: "save".to_string(),
+            parameters: Some(schema),
+            strict: None,
+        }];
+        let body = [
+            arg("title", Some("string"), "çğıöşüx"),
+            arg("meta", Some("object"), r#"{"tag": "abcdef"}"#),
+            arg("tags", Some("array"), r#"["xyz", "ok"]"#),
+            arg("free", Some("string"), "untouched and long"),
+        ]
+        .concat();
+        let input = tools(&call("tool=\"save\" index=\"1\"", &body));
+        let (calls, _) =
+            try_tool_call_parse_kimi_k3(&input, &KimiK3ParserConfig::default(), Some(&defs))
+                .unwrap();
+        let arguments: Value = serde_json::from_str(&calls[0].function.arguments).unwrap();
+        assert_eq!(
+            arguments,
+            serde_json::json!({"title": "çğıöş", "meta": {"tag": "abc"}, "tags": ["xy", "ok"], "free": "untouched and long"})
+        );
+
+        // within bounds: the parser's own serialization is kept byte for byte
+        let short = tools(&call(
+            "tool=\"save\" index=\"1\"",
+            &arg("title", Some("string"), "ok"),
+        ));
+        let (plain, _) = parse(&short);
+        let (checked, _) =
+            try_tool_call_parse_kimi_k3(&short, &KimiK3ParserConfig::default(), Some(&defs))
+                .unwrap();
+        assert_eq!(plain[0].function.arguments, checked[0].function.arguments);
     }
 
     #[test]

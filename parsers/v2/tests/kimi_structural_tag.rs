@@ -148,7 +148,17 @@ fn kimi_reasoning_exclusions_and_argument_order() {
             ctx.tool_choice = choice;
             ctx.starts_in_reasoning = true;
             let value = builder.build(&ctx).unwrap().unwrap();
-            assert_eq!(value["format"]["elements"][0]["end"], close);
+            // K3's prompt-opened think block is skippable
+            // (`skippable_prompt_reasoning_excludes`).
+            let reasoning = |value: &Value| {
+                if family == "kimi_k3" {
+                    assert_eq!(value["format"]["elements"][0]["type"], "optional");
+                    value["format"]["elements"][0]["content"]["elements"][0].clone()
+                } else {
+                    value["format"]["elements"][0].clone()
+                }
+            };
+            assert_eq!(reasoning(&value)["end"], close);
             let external = builder
                 .build_with_options(
                     &ctx,
@@ -171,10 +181,13 @@ fn kimi_reasoning_exclusions_and_argument_order() {
                 )
                 .unwrap()
                 .unwrap();
-            assert_eq!(
-                relaxed["format"]["elements"][0]["content"]["excludes"],
+            // The skippable K3 block must still stop at an XTML opener.
+            let excludes = if family == "kimi_k3" {
+                json!(["<|open|>"])
+            } else {
                 json!([])
-            );
+            };
+            assert_eq!(reasoning(&relaxed)["content"]["excludes"], excludes);
             for node in nodes(&relaxed, "json_schema") {
                 assert_eq!(node["any_order"], true);
             }
@@ -321,8 +334,19 @@ fn native_outputs_parse_and_export_grammar_cases() {
             } else {
                 "<|close|>think<|sep|>"
             };
-            cases.push(json!({"family":family,"tag":builder.build(&ctx).unwrap().unwrap(),
-                "accepted":[format!("thinking{close}{valid}")], "rejected":[format!("{valid}{close}")]}));
+            let mut accepted = vec![format!("thinking{close}{valid}")];
+            let mut rejected = vec![format!("{valid}{close}")];
+            if family == "kimi_k3" {
+                // An engine-side reasoning parser applies the grammar after the
+                // think block; the call is still constrained either way.
+                let invalid = call(family, "weather", "false");
+                accepted.push(valid.clone());
+                rejected.extend([invalid.clone(), format!("thinking{close}{invalid}")]);
+            }
+            cases.push(
+                json!({"family":family,"tag":builder.build(&ctx).unwrap().unwrap(),
+                "accepted":accepted, "rejected":rejected}),
+            );
         }
         let schema = json!({"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"],"additionalProperties":false});
         let mut ctx = context(&tools);

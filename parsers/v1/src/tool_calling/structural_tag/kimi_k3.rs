@@ -488,9 +488,80 @@ mod tests {
 
         assert_eq!(arguments[0]["content"]["type"], "or");
         assert_eq!(arguments[0]["content"]["elements"][0]["value"], "fast");
-        assert_eq!(arguments[1]["content"]["pattern"], r"(?:[^<]|<[^|]){0,8}");
+        // Length bounds stay out of the grammar; see `string_length_bounds_never_reach_the_grammar`.
+        assert_eq!(arguments[1]["content"]["type"], "any_text");
         assert_eq!(arguments[2]["content"]["pattern"], "(?:item-[0-9]+)");
-        assert_eq!(arguments[3]["content"]["pattern"], r"(?:[^<]|<[^|]){0,0}");
+        assert_eq!(arguments[3]["content"]["type"], "any_text");
+    }
+
+    #[test]
+    fn string_length_bounds_never_reach_the_grammar() {
+        let tools = vec![ToolDefinition {
+            name: "save".to_string(),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "maxLength": 1024, "minLength": 1},
+                    "doc": {
+                        "type": "object",
+                        "properties": {
+                            "body": {"type": "string", "maxLength": 2048},
+                            "maxLength": {"type": "integer"},
+                            "tags": {"type": "array", "items": {"type": "string", "minLength": 1}, "maxItems": 8}
+                        },
+                        "anyOf": [{"properties": {"alt": {"type": "string", "maxLength": 9}}}]
+                    }
+                },
+                "required": ["query", "doc"]
+            })),
+            strict: Some(true),
+        }];
+        for choice in [ToolChoice::Auto, ToolChoice::Required] {
+            let text =
+                serde_json::to_value(build_kimi_k3(&context(&choice, &tools)).unwrap().unwrap())
+                    .unwrap()
+                    .to_string();
+            assert!(
+                !text.contains("{1,1024}") && !text.contains("{0,1024}"),
+                "{text}"
+            );
+            // Small lower bounds stay: the top-level `query` as an exact repeat,
+            // the nested one as `minLength`.
+            assert!(text.contains("{1}(?:[^<]|<[^|])*"), "{text}");
+            assert_eq!(text.matches("\"minLength\":1").count(), 1, "{text}");
+            // A property named `maxLength` is data, not a keyword: it stays.
+            assert_eq!(text.matches("\"maxLength\":").count(), 1, "{text}");
+            assert!(
+                text.contains("\"maxLength\":{\"type\":\"integer\"}"),
+                "{text}"
+            );
+            // Array bounds are cheap for XGrammar and stay enforced.
+            assert!(text.contains("\"maxItems\":8"), "{text}");
+        }
+    }
+
+    #[test]
+    fn unsafe_patterns_never_reach_the_grammar() {
+        let path = r"^(?!\.\.?(?:\/|$))[A-Za-z0-9_\-.~:@+]{1,200}(?:\/(?!\.\.?(?:\/|$))[A-Za-z0-9_\-.~:@+]{1,200}){0,14}$";
+        let tools = vec![ToolDefinition {
+            name: "read_files".to_string(),
+            parameters: Some(json!({
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "pattern": path},
+                    "paths": {"type": "array", "items": {"type": "string", "pattern": path}},
+                    "date": {"type": "object", "properties": {"day": {"type": "string", "pattern": r"^\d{4}-\d{2}-\d{2}$"}}},
+                    "pattern": {"type": "string"}
+                }
+            })),
+            strict: Some(true),
+        }];
+        let choice = ToolChoice::Auto;
+        let text = serde_json::to_value(build_kimi_k3(&context(&choice, &tools)).unwrap().unwrap())
+            .unwrap()
+            .to_string();
+        assert!(!text.contains("(?!"), "{text}");
+        assert!(text.contains(r#"\\d{4}-\\d{2}-\\d{2}"#), "{text}");
     }
 
     #[test]
@@ -970,8 +1041,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(value["format"]["type"], "sequence");
-        assert_eq!(value["format"]["elements"][0]["type"], "tag");
-        assert_eq!(value["format"]["elements"][0]["end"], THINK_CLOSE);
+        // Optional, so a worker whose engine opens the grammar after the think
+        // block can skip it (see `wrap_reasoning_prefix_if_needed`).
+        assert_eq!(value["format"]["elements"][0]["type"], "optional");
+        assert_eq!(
+            value["format"]["elements"][0]["content"]["end"],
+            THINK_CLOSE
+        );
         assert_eq!(value["format"]["elements"][1]["type"], "sequence");
         assert_eq!(
             value["format"]["elements"][1]["elements"][0]["type"],

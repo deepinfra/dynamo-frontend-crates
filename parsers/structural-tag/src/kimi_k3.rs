@@ -10,6 +10,7 @@
 //! changing what the K3 parser expects.
 
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
 use anyhow::{Context, bail};
 use serde_json::{Map, Value};
@@ -354,6 +355,147 @@ fn xtml_types(schema: &Value, root: &Value) -> Vec<&'static str> {
         .collect()
 }
 
+/// Whether string `minLength`/`maxLength` reach the grammar as written.
+///
+/// XGrammar lowers a string length bound to a counted repeat, and its
+/// per-token mask fill for that repeat grows with every character already
+/// emitted inside the value: with the K3 tokenizer, a `maxLength: 1024`
+/// argument costs 0.3 s per token at its first character and 5.7 s after 120
+/// (XGrammar 0.2.7; 0.2.8 is no faster). Engines fill masks serially on their
+/// scheduler thread, so one such tool call stalls every request on the worker.
+/// Inside JSON-typed arguments the same bounds cost about 5 ms per token.
+/// Upper bounds and large lower bounds are therefore left out of the grammar,
+/// and `DYN_KIMI_K3_BOUNDED_STRING_REGEX=1` restores them.
+fn string_length_bounds_enforced() -> bool {
+    static ENFORCED: LazyLock<bool> =
+        LazyLock::new(|| std::env::var("DYN_KIMI_K3_BOUNDED_STRING_REGEX").as_deref() == Ok("1"));
+    *ENFORCED
+}
+
+/// The largest lower bound, or `pattern` repeat count, kept while string
+/// length bounds are left out of the grammar.
+const MAX_CHEAP_REPEAT: u64 = 64;
+
+/// A raw-string lower bound that stays cheap for XGrammar.
+///
+/// `minLength: 1` written as `{1,}` costs about 100 ms of mask fill per token
+/// for the whole value, while an exact repeat followed by `*` costs that only
+/// until the bound is met and nothing after (XGrammar 0.2.8, 160k-token
+/// vocabulary). Without the bound, an empty string satisfies the grammar but
+/// not the caller's schema.
+fn cheap_min_length_regex(schema: &Map<String, Value>) -> Option<String> {
+    let min_len = schema.get("minLength")?.as_u64()?;
+    (1..=MAX_CHEAP_REPEAT)
+        .contains(&min_len)
+        .then(|| format!("{STRING_ATOM}{{{min_len}}}{STRING_ATOM}*"))
+}
+
+/// Make a JSON-typed argument schema safe for XGrammar: drop every `pattern`
+/// it cannot take and, when `strip_bounds`, every `maxLength` and every
+/// `minLength` above [`MAX_CHEAP_REPEAT`]. Only schema positions are visited,
+/// so a property named `maxLength` and data under `const`, `enum`, or
+/// `default` stay.
+fn sanitize_schema(schema: &mut Value, strip_bounds: bool) {
+    let Some(object) = schema.as_object_mut() else {
+        return;
+    };
+    if strip_bounds {
+        object.remove("maxLength");
+        if object
+            .get("minLength")
+            .and_then(Value::as_u64)
+            .is_none_or(|min| min > MAX_CHEAP_REPEAT)
+        {
+            object.remove("minLength");
+        }
+    }
+    if object
+        .get("pattern")
+        .and_then(Value::as_str)
+        .is_some_and(|pattern| !pattern_is_grammar_safe(pattern, strip_bounds))
+    {
+        object.remove("pattern");
+    }
+    for key in SCHEMA_MAP_KEYWORDS {
+        if let Some(values) = object.get_mut(*key).and_then(Value::as_object_mut) {
+            for value in values.values_mut() {
+                sanitize_schema(value, strip_bounds);
+            }
+        }
+    }
+    for key in SCHEMA_VALUE_KEYWORDS.iter().chain(SCHEMA_ARRAY_KEYWORDS) {
+        match object.get_mut(*key) {
+            // Draft-07 tuple `items` and the array keywords hold schema lists.
+            Some(Value::Array(values)) => {
+                for value in values {
+                    sanitize_schema(value, strip_bounds);
+                }
+            }
+            Some(value) => sanitize_schema(value, strip_bounds),
+            None => {}
+        }
+    }
+}
+
+/// Whether XGrammar can compile `pattern` without failing the request or
+/// stalling the worker. It rejects lookaround and backreferences: XGrammar
+/// 0.2.8 fails a raw-string regex with "Lookahead is not supported yet", and
+/// inside a JSON schema its `per_rule_fsm_hashes` check fails, so every request
+/// with that tool fails. A dropped `pattern` only loosens the value. When
+/// `strip_bounds`, a counted repeat above [`MAX_CHEAP_REPEAT`] is rejected too,
+/// since it costs the mask fill of a length bound.
+fn pattern_is_grammar_safe(pattern: &str, strip_bounds: bool) -> bool {
+    let bytes = pattern.as_bytes();
+    let mut i = 0;
+    let mut in_class = false;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => {
+                if !in_class
+                    && bytes
+                        .get(i + 1)
+                        .is_some_and(|b| (b.is_ascii_digit() && *b != b'0') || *b == b'k')
+                {
+                    return false;
+                }
+                i += 2;
+                continue;
+            }
+            b'[' if !in_class => in_class = true,
+            b']' if in_class => in_class = false,
+            b'(' if !in_class => {
+                let rest = &bytes[i + 1..];
+                if ["?=", "?!", "?<=", "?<!"]
+                    .iter()
+                    .any(|lookaround| rest.starts_with(lookaround.as_bytes()))
+                {
+                    return false;
+                }
+            }
+            b'{' if !in_class && strip_bounds => {
+                let bound = bytes[i..]
+                    .iter()
+                    .position(|b| *b == b'}')
+                    .and_then(|end| std::str::from_utf8(&bytes[i + 1..i + end]).ok())
+                    .and_then(|body| {
+                        body.split(',')
+                            .map(str::trim)
+                            .filter(|part| !part.is_empty())
+                            .map(|part| part.parse::<u64>().ok())
+                            .collect::<Option<Vec<_>>>()
+                    });
+                if bound.is_some_and(|counts| counts.iter().any(|count| *count > MAX_CHEAP_REPEAT))
+                {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    true
+}
+
 fn string_length_regex(schema: &Map<String, Value>) -> Option<String> {
     let min_len = match schema.get("minLength") {
         Some(value) => value.as_u64()?,
@@ -487,6 +629,13 @@ fn string_content_format(schema: &Value) -> anyhow::Result<Option<Format>> {
         return Ok((!formats.is_empty()).then(|| one_of(formats)));
     }
 
+    let bounds_enforced = string_length_bounds_enforced();
+    // A pattern XGrammar cannot take is dropped, which only loosens the value.
+    let pattern = schema
+        .get("pattern")
+        .and_then(Value::as_str)
+        .filter(|pattern| pattern_is_grammar_safe(pattern, !bounds_enforced));
+
     let enum_values = schema
         .get("enum")
         .and_then(Value::as_array)
@@ -501,7 +650,6 @@ fn string_content_format(schema: &Value) -> anyhow::Result<Option<Format>> {
         if values.is_empty() {
             return Ok(None);
         }
-        let pattern = schema.get("pattern").and_then(Value::as_str);
         let compiled_pattern = pattern.map(regex::Regex::new);
         if values.len() <= 256
             && values.iter().all(|value| value.as_str().is_some())
@@ -533,7 +681,7 @@ fn string_content_format(schema: &Value) -> anyhow::Result<Option<Format>> {
         }
     }
 
-    if let Some(pattern) = schema.get("pattern").and_then(Value::as_str) {
+    if let Some(pattern) = pattern {
         // XGrammar 0.2.3 regexes do not support lookahead, so a general
         // intersection of `pattern` and length bounds cannot be expressed.
         // Match XGrammar's JSON-schema policy: `pattern` takes precedence when
@@ -563,7 +711,12 @@ fn string_content_format(schema: &Value) -> anyhow::Result<Option<Format>> {
         })));
     }
 
-    if let Some(pattern) = string_length_regex(schema) {
+    let length_pattern = if bounds_enforced {
+        string_length_regex(schema)
+    } else {
+        cheap_min_length_regex(schema)
+    };
+    if let Some(pattern) = length_pattern {
         return Ok(Some(Format::Regex(RegexFormat { pattern })));
     }
 
@@ -1013,8 +1166,10 @@ fn argument_format(key: &str, schema: &Value, root: &Value) -> anyhow::Result<Op
             };
             content
         } else {
+            let mut json_schema = schema;
+            sanitize_schema(&mut json_schema, !string_length_bounds_enforced());
             Format::JsonSchema(JsonSchemaFormat {
-                json_schema: schema,
+                json_schema,
                 style: JsonSchemaStyle::Json,
             })
         };
@@ -1250,18 +1405,121 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
-    fn string_content_enforces_min_length_without_a_maximum() {
+    fn string_length_regex_enforces_min_length_without_a_maximum() {
+        let schema = json!({"type": "string", "minLength": 2});
+        assert_eq!(
+            string_length_regex(schema.as_object().unwrap()).unwrap(),
+            format!("{STRING_ATOM}{{2,}}")
+        );
+    }
+
+    #[test]
+    fn string_length_bounds_stay_out_of_the_grammar() {
+        let format =
+            |schema: Value| serde_json::to_value(string_content_format(&schema).unwrap()).unwrap();
+        for schema in [
+            json!({"type": "string", "maxLength": 8}),
+            json!({"type": "string", "minLength": 0, "maxLength": 1024}),
+            json!({"type": "string", "minLength": 65}),
+        ] {
+            assert_eq!(format(schema.clone())["type"], "any_text", "{schema}");
+        }
+        // A small lower bound stays, as an exact repeat rather than `{n,}`.
+        for (min, schema) in [
+            (
+                1,
+                json!({"type": "string", "minLength": 1, "maxLength": 1024}),
+            ),
+            (64, json!({"type": "string", "minLength": 64})),
+        ] {
+            let value = format(schema.clone());
+            assert_eq!(value["type"], "regex", "{schema}");
+            assert_eq!(
+                value["pattern"],
+                format!("{STRING_ATOM}{{{min}}}{STRING_ATOM}*")
+            );
+        }
+    }
+
+    #[test]
+    fn sanitize_handles_every_subschema_container() {
+        let mut schema = json!({
+            "maxLength": 1,
+            "properties": {"a": {"type": "string", "maxLength": 2}},
+            "items": [{"maxLength": 3}],
+            "additionalProperties": {"minLength": 65},
+            "allOf": [{"maxLength": 5}],
+            "$defs": {"d": {"maxLength": 6}},
+            "if": {"minLength": 70}, "then": {"maxLength": 8}, "else": {"maxLength": 9},
+            "not": {"minLength": 7, "pattern": "^(?!a)"}
+        });
+        sanitize_schema(&mut schema, true);
+        // A small lower bound is cheap and stays; the lookahead never does.
+        assert_eq!(schema["not"], json!({"minLength": 7}));
+        schema.as_object_mut().unwrap().remove("not");
+        let text = schema.to_string();
+        assert!(!text.contains("Length"), "{text}");
+
+        // Property names and literal data are not keywords.
+        let mut schema = json!({
+            "properties": {"maxLength": {"type": "integer"}, "pattern": {"type": "string"}},
+            "const": {"minLength": 100, "pattern": "(?=a)"},
+            "default": {"maxLength": 2}
+        });
+        let expected = schema.clone();
+        sanitize_schema(&mut schema, true);
+        assert_eq!(schema, expected);
+
+        // Enforced bounds stay; unsafe patterns still go.
+        let mut schema = json!({"maxLength": 1024, "minLength": 100, "pattern": r"(a)\1"});
+        sanitize_schema(&mut schema, false);
+        assert_eq!(schema, json!({"maxLength": 1024, "minLength": 100}));
+    }
+
+    #[test]
+    fn pattern_safety() {
+        for safe in [
+            r"^\d{4}-\d{2}$",
+            r"^[a-z{}(?!]+$",
+            r"^a{0,64}$",
+            r"^\(?!x$",
+            r"^[\]]{2}$",
+        ] {
+            assert!(pattern_is_grammar_safe(safe, true), "{safe}");
+        }
+        for unsafe_pattern in [
+            r"(?=a)",
+            r"(?<!a)b",
+            r"(a)\1",
+            r"(?<n>a)\k<n>",
+            r"^a{1,200}$",
+            r"^a{65}$",
+        ] {
+            assert!(
+                !pattern_is_grammar_safe(unsafe_pattern, true),
+                "{unsafe_pattern}"
+            );
+        }
+        assert!(pattern_is_grammar_safe(r"^a{1,200}$", false));
+        assert!(!pattern_is_grammar_safe(r"^(?!a)", false));
+    }
+
+    #[test]
+    fn unsafe_string_patterns_never_reach_the_grammar() {
+        let lookahead = r"^(?!\.\.?(?:\/|$))[A-Za-z0-9_\-.~:@+]{1,64}$";
         let value = serde_json::to_value(
-            string_content_format(&json!({
-                "type": "string",
-                "minLength": 2
-            }))
-            .unwrap(),
+            string_content_format(&json!({"type": "string", "pattern": lookahead})).unwrap(),
         )
         .unwrap();
+        assert_eq!(value["type"], "any_text");
 
-        assert_eq!(value["type"], "regex");
-        assert_eq!(value["pattern"], format!("{STRING_ATOM}{{2,}}"));
+        // The enum path no longer depends on a pattern the regex crate rejects.
+        let value = serde_json::to_value(
+            string_content_format(&json!({"type": "string", "enum": ["a"], "pattern": "(?=a)"}))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(value["type"], "const_string");
     }
 
     #[test]

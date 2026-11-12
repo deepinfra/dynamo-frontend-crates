@@ -132,6 +132,17 @@ impl ToolCallGrammar for KimiK3 {
         &[kimi_k3::TOOLS_OPEN, kimi_k3::CALL_OPEN]
     }
 
+    // An engine running its own K3 reasoning parser opens the grammar only after
+    // the think block has closed, while the request's reasoning policy can come
+    // from a worker without one. A mandatory block would make such a worker close
+    // the think block a second time and run to max_tokens. K3 reasoning never
+    // contains an XTML opener, so excluding `<|open|>` ends the skippable branch
+    // at the first `<|open|>response` or `<|open|>tools`, and it cannot let an
+    // off-schema call through.
+    fn skippable_prompt_reasoning_excludes(&self) -> Option<&'static [&'static str]> {
+        Some(&[kimi_k3::OPEN])
+    }
+
     fn build_triggered_calls(
         &self,
         policy: &ResolvedToolCallingPolicy<'_>,

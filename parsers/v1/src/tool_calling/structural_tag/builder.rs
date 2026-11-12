@@ -11,7 +11,8 @@ use crate::tool_calling::{ToolChoice, ToolDefinition};
 
 use super::dsml::{self, DsmlToolCallsConfig};
 use super::format::{
-    AnyTextFormat, AnyTokensFormat, Format, SequenceFormat, StructuralTag, TagFormat,
+    AnyTextFormat, AnyTokensFormat, Format, OptionalFormat, SequenceFormat, StructuralTag,
+    TagFormat,
 };
 use super::glm47;
 use super::kimi_k2;
@@ -202,11 +203,31 @@ impl StructuralTagBuilder {
         let reasoning_end = self.reasoning_end().ok_or_else(|| {
             anyhow::anyhow!("reasoning end tag is not configured for structural tag")
         })?;
-        let reasoning_prefix = Format::Tag(TagFormat {
-            begin: String::new(),
-            content: Box::new(Format::AnyText(AnyTextFormat { excludes: vec![] })),
-            end: reasoning_end.to_string(),
-        });
+        let reasoning_prefix = if matches!(self, Self::KimiK3) {
+            // An engine running its own K3 reasoning parser opens the grammar only
+            // after the think block has closed, while the request's reasoning policy
+            // can come from a worker without one. A mandatory prefix would make such
+            // a worker close the think block a second time and run to max_tokens, so
+            // the prefix is optional. K3 reasoning never contains an XTML opener, so
+            // excluding `<|open|>` ends the prefix branch at the first
+            // `<|open|>response` or `<|open|>tools`, and it cannot let an off-schema
+            // call through.
+            Format::Optional(OptionalFormat {
+                content: Box::new(Format::Tag(TagFormat {
+                    begin: String::new(),
+                    content: Box::new(Format::AnyText(AnyTextFormat {
+                        excludes: vec![dynamo_structural_tag::kimi_k3::OPEN.to_string()],
+                    })),
+                    end: reasoning_end.to_string(),
+                })),
+            })
+        } else {
+            Format::Tag(TagFormat {
+                begin: String::new(),
+                content: Box::new(Format::AnyText(AnyTextFormat { excludes: vec![] })),
+                end: reasoning_end.to_string(),
+            })
+        };
 
         Ok(StructuralTag {
             format: Format::Sequence(SequenceFormat {

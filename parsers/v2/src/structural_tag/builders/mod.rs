@@ -36,8 +36,8 @@ use super::policy::{
     ResolvedToolCalling, ResolvedToolCallingPolicy, ToolCallingMode, resolve_tool_calling,
 };
 use super::wire::{
-    AnyTextFormat, ConstStringFormat, Format, JsonSchemaFormat, JsonSchemaStyle, OrFormat,
-    SequenceFormat, StructuralTag, TagFormat, TriggeredTagsFormat,
+    AnyTextFormat, ConstStringFormat, Format, JsonSchemaFormat, JsonSchemaStyle, NestedFormat,
+    OrFormat, SequenceFormat, StructuralTag, TagFormat, TriggeredTagsFormat,
 };
 use super::{PromptChannel, ReasoningBoundary, StructuralTagContext, StructuralTagOptions};
 
@@ -183,6 +183,13 @@ pub(super) trait ToolCallGrammar: Send + Sync {
     /// Permit a reasoning message when the prompt leaves its header unopened.
     fn optional_reasoning(&self) -> bool {
         false
+    }
+
+    /// When the prompt opens reasoning, let the grammar start after the
+    /// reasoning block instead, with the block's text excluding these markers.
+    /// `None` keeps a prompt-opened reasoning block mandatory.
+    fn skippable_prompt_reasoning_excludes(&self) -> Option<&'static [&'static str]> {
+        None
     }
 
     fn reasoning_begin(&self) -> Option<&'static str>;
@@ -341,6 +348,32 @@ fn wrap_reasoning_if_needed(
     let reasoning_end = grammar
         .reasoning_end()
         .ok_or_else(|| anyhow::anyhow!("reasoning end tag is not configured for structural tag"))?;
+
+    if starts_in_reasoning && let Some(excludes) = grammar.skippable_prompt_reasoning_excludes() {
+        let mut elements = vec![Format::Tag(TagFormat {
+            begin: String::new(),
+            content: Box::new(Format::AnyText(AnyTextFormat {
+                excludes: excludes
+                    .iter()
+                    .map(|marker| (*marker).to_string())
+                    .collect(),
+            })),
+            end: reasoning_end.to_string(),
+        })];
+        if !grammar.reasoning_suffix().is_empty() {
+            elements.push(Format::ConstString(ConstStringFormat {
+                value: grammar.reasoning_suffix().to_string(),
+            }));
+        }
+        return Ok(Format::Sequence(SequenceFormat {
+            elements: vec![
+                Format::Optional(NestedFormat {
+                    content: Box::new(Format::Sequence(SequenceFormat { elements })),
+                }),
+                suffix,
+            ],
+        }));
+    }
 
     let begin = if starts_in_reasoning {
         ""
