@@ -312,12 +312,83 @@ pub fn python_trim(value: StringInput<'_>, chars: Option<Cow<'_, str>>) -> Value
 /// on their output) expect Python separators and **no** HTML escaping
 /// (`'`, `<`, `>`, `&` stay literal). serde_json leaves non-ASCII unescaped by
 /// default, matching `ensure_ascii=False`.
+/// Recursively sort object keys (Python `json.dumps(sort_keys=True)`); serde_json is built with
+/// `preserve_order` here, so insertion order would otherwise leak into the prompt.
+fn sort_json_keys(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut entries: Vec<(String, serde_json::Value)> = map.into_iter().collect();
+            entries.sort_by(|a, b| a.0.cmp(&b.0));
+            serde_json::Value::Object(
+                entries.into_iter().map(|(k, v)| (k, sort_json_keys(v))).collect(),
+            )
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(sort_json_keys).collect())
+        }
+        other => other,
+    }
+}
+
+
+/// `json.dumps(separators=(item, key))` with Python float spelling.
+struct SeparatorFormatter<'a> {
+    item: &'a [u8],
+    key: &'a [u8],
+}
+
+impl serde_json::ser::Formatter for SeparatorFormatter<'_> {
+    fn write_f64<W: ?Sized + std::io::Write>(&mut self, writer: &mut W, value: f64) -> std::io::Result<()> {
+        PyJsonFormatter.write_f64(writer, value)
+    }
+    fn write_number_str<W: ?Sized + std::io::Write>(&mut self, writer: &mut W, value: &str) -> std::io::Result<()> {
+        PyJsonFormatter.write_number_str(writer, value)
+    }
+    fn begin_array_value<W: ?Sized + std::io::Write>(&mut self, writer: &mut W, first: bool) -> std::io::Result<()> {
+        if !first { writer.write_all(self.item)?; }
+        Ok(())
+    }
+    fn begin_object_key<W: ?Sized + std::io::Write>(&mut self, writer: &mut W, first: bool) -> std::io::Result<()> {
+        if !first { writer.write_all(self.item)?; }
+        Ok(())
+    }
+    fn begin_object_value<W: ?Sized + std::io::Write>(&mut self, writer: &mut W) -> std::io::Result<()> {
+        writer.write_all(self.key)
+    }
+}
+
 pub fn tojson(value: Value, kwargs: Kwargs) -> Result<Value, Error> {
     let value = crate::python::template_json(value).map_err(|err| {
         Error::new(ErrorKind::BadSerialization, "cannot serialize to JSON").with_source(err)
     })?;
+    // HF `tojson(sort_keys=..., separators=(item, key))` are model-visible (Inkling-2's chat
+    // template renders its tool declaration with `sort_keys=true, separators=(",", ":")`).
+    let sort_keys: bool = kwargs.get::<Option<bool>>("sort_keys").ok().flatten().unwrap_or(false);
+    let value = if sort_keys { sort_json_keys(value) } else { value };
+    let separators: Option<(String, String)> = match kwargs.get::<Option<Value>>("separators") {
+        Ok(Some(seps)) => {
+            let item = seps.get_item_by_index(0).ok().and_then(|v| v.as_str().map(str::to_owned));
+            let key = seps.get_item_by_index(1).ok().and_then(|v| v.as_str().map(str::to_owned));
+            match (item, key) {
+                (Some(i), Some(k)) => Some((i, k)),
+                _ => {
+                    return Err(Error::new(
+                        ErrorKind::InvalidOperation,
+                        "tojson separators must be a pair of strings",
+                    ));
+                }
+            }
+        }
+        _ => None,
+    };
     let mut buf = Vec::new();
-    let result = if let Ok(indent) = kwargs.get("indent") {
+    let result = if let (Some((item, key)), Err(_)) = (&separators, kwargs.get::<usize>("indent")) {
+        let mut serializer = serde_json::Serializer::with_formatter(
+            &mut buf,
+            SeparatorFormatter { item: item.as_bytes(), key: key.as_bytes() },
+        );
+        value.serialize(&mut serializer)
+    } else if let Ok(indent) = kwargs.get("indent") {
         // Python `json.dumps(indent=n)` separators are `(",", ": ")` with the
         // item separator followed by newline + indent — PrettyFormatter matches.
         let repeat = b" ".repeat(indent);
@@ -363,6 +434,23 @@ pub fn strftime_now(format_str: &str) -> Result<Value, Error> {
     Ok(Value::from_safe_string(
         local.format(format_str).to_string(),
     ))
+}
+
+#[cfg(test)]
+mod tojson_kwargs_tests {
+    use super::*;
+    #[test]
+    fn sort_keys_and_compact_separators_match_python() {
+        let mut env = minijinja::Environment::new();
+        env.add_filter("tojson", tojson);
+        let v = serde_json::json!({"name": "get_weather", "description": "x", "parameters": {"type": "object", "properties": {"unit": {"enum": ["c", "f"]}, "city": {"type": "string"}}}, "f": 0.5});
+        let out = env
+            .render_str(r#"{{ v | tojson(sort_keys=true, separators=(",", ":")) }}"#, minijinja::context! { v => minijinja::Value::from_serialize(&v) })
+            .unwrap();
+        assert_eq!(out, r#"{"description":"x","f":0.5,"name":"get_weather","parameters":{"properties":{"city":{"type":"string"},"unit":{"enum":["c","f"]}},"type":"object"}}"#);
+        let out2 = env.render_str(r#"{{ v | tojson }}"#, minijinja::context! { v => minijinja::Value::from_serialize(&v) }).unwrap();
+        assert!(out2.starts_with(r#"{"name": "get_weather", "description": "x""#), "{out2}");
+    }
 }
 
 #[cfg(test)]
