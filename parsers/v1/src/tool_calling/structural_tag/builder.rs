@@ -15,6 +15,7 @@ use super::format::{
     TagFormat,
 };
 use super::glm47;
+use super::inkling;
 use super::kimi_k2;
 use super::kimi_k3;
 use super::triggered_tags::{self, TriggeredTagsConfig};
@@ -101,7 +102,7 @@ pub(crate) fn uses_declared_tool_schema(tool: &ToolDefinition, strict_schema: bo
 ///
 /// Who needs which spelling:
 /// - JSON-forwarding builders hand the schema to the backend verbatim and take
-///   [`resolve_tool_schema`]: `TriggeredTags`, `DsmlToolCalls`, `KimiK2`.
+///   [`resolve_tool_schema`]: `TriggeredTags`, `DsmlToolCalls`, `KimiK2`, `Inkling`.
 /// - Self-resolving builders decode `$ref`s (percent + JSON Pointer) while
 ///   validating or inlining and must see the schema as written, taking this
 ///   function and canonicalizing only what they forward afterwards: `Glm47`
@@ -150,6 +151,9 @@ pub enum StructuralTagBuilder {
     /// opening `<think>` for the model to generate.
     KimiK2,
 
+    /// Inkling's JSON tool envelope with flexible whitespace.
+    Inkling,
+
     /// Kimi K3's native XTML response/tools channel format.
     KimiK3,
 
@@ -174,6 +178,7 @@ impl StructuralTagBuilder {
             Self::TriggeredTags(config) => triggered_tags::build_triggered_tags(config, ctx)?,
             Self::DsmlToolCalls(config) => dsml::build_dsml_tool_calls(config, ctx)?,
             Self::KimiK2 => kimi_k2::build_kimi_k2(ctx)?,
+            Self::Inkling => inkling::build_inkling(ctx)?,
             Self::KimiK3 => kimi_k3::build_kimi_k3(ctx)?,
             // Built as JSON so the public format types stay unchanged.
             Self::Glm47 => return glm47::build_glm47(ctx),
@@ -267,6 +272,7 @@ impl StructuralTagBuilder {
             Self::TriggeredTags(config) => &config.tool_call_ban_tokens,
             Self::DsmlToolCalls(config) => &config.tool_call_ban_tokens,
             Self::KimiK2 => &[],
+            Self::Inkling => inkling::BAN_TOKENS.as_slice(),
             Self::KimiK3 => &[],
             Self::Glm47 => glm47::BAN_TOKENS.as_slice(),
         }
@@ -279,6 +285,7 @@ impl StructuralTagBuilder {
             // K2.5/K2.6 `kimi_k25` reasoning terminator. Original K2-Thinking
             // generates the opening `<think>` itself and needs a separate path.
             Self::KimiK2 => Some("</think>"),
+            Self::Inkling => Some("<|end_message|>"),
             Self::KimiK3 => Some("<|close|>think<|sep|>"),
             Self::Glm47 => Some("</think>"),
         }
