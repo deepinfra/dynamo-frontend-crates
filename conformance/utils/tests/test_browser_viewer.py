@@ -247,13 +247,12 @@ def test_batch_popup_shows_final_fields_and_inapplicable_chunks(published_viewer
 @pytest.mark.parametrize("implementation,scenario,has_origin", [
     ("dynamo_v1", "tool_only", True),
     ("dynamo_v1_jail", "tool_only", True),
-    # The latest native snapshot is a full fresh capture, without a verified
-    # recapture overlay. Historical v1 observations retain their overlay origin.
     ("dynamo_v2", "tool_only", False),
+    ("dynamo_v2", "gpt_oss_native_builtin_python_raw", True),
     *[(implementation, "gpt_oss_assistant_default_channel_visible_response", False)
       for implementation in ("dynamo_v1", "dynamo_v1_jail", "dynamo_v2")],
 ])
-def test_unified_popup_shows_actual_observation_producer(historical_published_viewer, implementation, scenario, has_origin):
+def test_unified_popup_keeps_provenance_without_dumping_receipts(historical_published_viewer, implementation, scenario, has_origin):
     catalog = _published_catalog(historical_published_viewer)
     versions = {capture["version"] for capture in catalog["capture_generation"]["current"]
                 if capture["implementation"] == implementation and capture["family"] == "gpt_oss"}
@@ -273,11 +272,10 @@ def test_unified_popup_shows_actual_observation_producer(historical_published_vi
         cell = driver.find_element(By.CSS_SELECTOR, "#tab-unified .matrix-cell[data-ttip-id]")
         rendered = driver.execute_script("""
             const candidate=window.__conformanceTooltipModel(arguments[0]).candidates.find(item=>item.key===arguments[1]);
-            const expectedProducer=candidate.block.producer_origin ? 'Producer: '+JSON.stringify(candidate.block.producer_origin) : null;
             window.__buildTooltip(arguments[0]);
             arguments[0].dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'touch'}));
             arguments[0].click();
-            return {candidate,expectedProducer};
+            return {candidate};
         """, cell, key)
         candidate = rendered["candidate"]
         assert candidate["version"] == version
@@ -287,10 +285,7 @@ def test_unified_popup_shows_actual_observation_producer(historical_published_vi
         output = popup.find_element(By.CSS_SELECTOR, f'.ttip-final td[data-cand="{key}"]')
         labels = [element.text for element in output.find_elements(By.CSS_SELECTOR, ".expl")
                   if element.text.startswith("Producer: ")]
-        expected = [rendered["expectedProducer"]] if has_origin else []
-        assert labels == expected
-        if has_origin:
-            assert json.loads(labels[0].removeprefix("Producer: ")) == origin
+        assert labels == []
     finally:
         driver.quit()
         server.shutdown()
@@ -465,6 +460,7 @@ def test_dynamo_capture_picker_keeps_recent_two_and_latest_per_historical_line(h
         """)
         newest_v2_by_minor = {}
         newest_v1_by_producer_major = {}
+        dynamo_sglang_choices = set()
         for item in candidates:
             if item.get("identity", "").startswith("dynamo_v2@") or item["key"].startswith("dynamo@"):
                 version = item["version"]
@@ -472,6 +468,8 @@ def test_dynamo_capture_picker_keeps_recent_two_and_latest_per_historical_line(h
                 current = newest_v2_by_minor.get(minor)
                 if current is None or capture_release_sort_key(version) > capture_release_sort_key(current["version"]):
                     newest_v2_by_minor[minor] = item
+            elif item["key"].startswith("dynamo_sglang_python@"):
+                dynamo_sglang_choices.add(item["key"])
             elif item["key"].startswith(("dynamo_v1@", "dynamo_v1_jail@")):
                 producer = item["key"].split("@", 1)[0]
                 version = item["version"]
@@ -479,7 +477,7 @@ def test_dynamo_capture_picker_keeps_recent_two_and_latest_per_historical_line(h
                 line = (producer, major)
                 newest_v1_by_producer_major[line] = max(newest_v1_by_producer_major.get(line, version), version,
                                                          key=capture_release_sort_key)
-        expected = {item["key"] for item in newest_v2_by_minor.values()}
+        expected = {item["key"] for item in newest_v2_by_minor.values()} | dynamo_sglang_choices
         expected.update(f"{producer}@{version}" for (producer, _major), version in newest_v1_by_producer_major.items())
         for producer in ("dynamo_v2", "dynamo_v1", "dynamo_v1_jail"):
             recent = sorted((item for item in candidates if item.get("identity", "").startswith(producer + "@")),
@@ -1728,6 +1726,51 @@ def test_selected_capture_family_union_and_box_spacing(identities, historical_pu
                   const key = tab.candidates.find(candidate => candidate.identity === arguments[1]).key;
                   return Object.values(row.cells).some(cell => cell.cmp?.[key]?.na === 1);
                 """, family, missing), (family, missing)
+    finally:
+        driver.quit()
+        server.shutdown()
+        server.server_close()
+
+
+def test_status_palette_preserves_distinct_outcome_meanings(published_viewer):
+    server, _ = _server(root=published_viewer)
+    driver = _driver()
+    try:
+        driver.get(f"http://127.0.0.1:{server.server_port}/?tab=tab-unified")
+        _ready(driver, "tab-unified")
+        expected = {
+            "light": {"diverge": "rgb(240, 169, 42)", "leak": "rgb(224, 72, 75)", "error": "rgb(155, 79, 214)"},
+            "dark": {"diverge": "rgb(217, 149, 42)", "leak": "rgb(217, 71, 74)", "error": "rgb(164, 101, 220)"},
+        }
+        colors = driver.execute_script("""
+          const root = document.documentElement, prior = root.getAttribute('data-theme');
+          const colors = {};
+          try {
+            for (const theme of ['light', 'dark']) {
+              root.setAttribute('data-theme', theme);
+              colors[theme] = {};
+              for (const scope of [document.body, document.getElementById('tab-unified')]) {
+                const key = scope.id || 'body', host = document.createElement('div');
+                scope.append(host);
+                try {
+                  colors[theme][key] = {};
+                  for (const status of ['diverge', 'leak', 'error']) {
+                    const swatch = document.createElement('i');
+                    swatch.className = 'legend-swatch matrix-status status-' + status;
+                    host.append(swatch);
+                    colors[theme][key][status] = getComputedStyle(swatch).backgroundColor;
+                  }
+                } finally { host.remove(); }
+              }
+            }
+          } finally {
+            if (prior === null) root.removeAttribute('data-theme'); else root.setAttribute('data-theme', prior);
+          }
+          return colors;
+        """)
+        for theme, scopes in colors.items():
+            for scope, palette in scopes.items():
+                assert palette == expected[theme], (theme, scope, palette)
     finally:
         driver.quit()
         server.shutdown()

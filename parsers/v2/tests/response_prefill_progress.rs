@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+#[path = "support/quote_policy.rs"]
+mod quote_policy;
+
 use dynamo_parsers_v2::{
     InvalidGuidedPayloadPolicy, Qwen3CoderToolStreamParser, Tool, ToolParser, UnifiedEvent,
     UnifiedParserEvent, UnifiedParserExt, UnifiedParserInit, UnifiedParserStartingState,
@@ -310,9 +313,24 @@ fn response_prefill_boundary_owned_native_body_stays_outside_guided_payload() {
 #[test]
 fn response_prefill_native_string_json_is_not_a_guided_call() {
     // Corpus initialization cannot choose all three public invalid-payload policies.
-    let native = r#"<|tool_call>call:f{x:<|"|>[{"name":"get_weather","arguments":{"city":"Rome"}}]<|"|>}<tool_call|>"#;
     let payload = r#"[{"name":"get_weather","arguments":{"city":"Paris"}}]"#;
-    for prefix in ["", "{}"] {
+    for (prefix, key) in ["", "{}"].into_iter().flat_map(|prefix| {
+        [
+            "x",
+            "備考",
+            "field_備考",
+            "$ref",
+            "@type",
+            "a/b",
+            "user name",
+            "備考　欄",
+            "　備考　",
+        ]
+        .map(move |key| (prefix, key))
+    }) {
+        let native = format!(
+            r#"<|tool_call>call:f{{{key}:<|"|>[{{"name":"get_weather","arguments":{{"city":"Rome"}}}}]<|"|>}}<tool_call|>"#
+        );
         let input = format!("{prefix}{native}{payload}");
         let mut expected = Vec::new();
         if !prefix.is_empty() {
@@ -336,7 +354,7 @@ fn response_prefill_native_string_json_is_not_a_guided_call() {
                 invalid_guided_payload: policy,
                 ..Default::default()
             };
-            for split in 0..=input.len() {
+            for split in input.char_indices().map(|(at, _)| at).chain([input.len()]) {
                 parser.reset();
                 parser.initialize_request(init.clone()).unwrap();
                 let mut events = parser.push(&input[..split]).unwrap();
@@ -682,6 +700,11 @@ fn all_starting_channels_keep_long_field_progress_and_argument_order() {
 
 #[test]
 fn visible_prose_preserves_quoted_native_markers_without_changing_routing() {
+    if !quote_policy::quote_aware_process(
+        "visible_prose_preserves_quoted_native_markers_without_changing_routing",
+    ) {
+        return;
+    }
     for starting_state in [
         UnifiedParserStartingState::None,
         UnifiedParserStartingState::Response,
@@ -737,6 +760,11 @@ fn visible_prose_preserves_quoted_native_markers_without_changing_routing() {
 
 #[test]
 fn reject_quoted_response_prefix_waits_for_payload_validation() {
+    if !quote_policy::quote_aware_process(
+        "reject_quoted_response_prefix_waits_for_payload_validation",
+    ) {
+        return;
+    }
     for family in guided_families() {
         for named in [false, true] {
             for quote in ['"', '\'', '`'] {

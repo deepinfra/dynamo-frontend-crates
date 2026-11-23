@@ -8,6 +8,7 @@
 //!
 //! Reference: https://huggingface.co/deepseek-ai/DeepSeek-V3.2/tree/main/encoding
 
+use crate::{GenerationState, RenderedPrompt};
 use anyhow::{Context, Result};
 use serde_json::Value as JsonValue;
 use std::fmt::Write;
@@ -50,12 +51,14 @@ fn render_message(
     thinking_mode: ThinkingMode,
     last_user_idx: Option<usize>,
     block: ToolBlock,
-) -> Result<()> {
+) -> Result<GenerationState> {
     let msg = &messages[index];
     let role = msg
         .get("role")
         .and_then(|r| r.as_str())
         .context("Missing 'role' field")?;
+
+    let mut state = GenerationState::Unknown;
 
     match role {
         "system" => {
@@ -83,8 +86,10 @@ fn render_message(
 
             if Some(index) == last_user_idx && thinking_mode == ThinkingMode::Thinking {
                 prompt.push_str(tokens::THINKING_START);
+                state = GenerationState::Reasoning;
             } else {
                 prompt.push_str(tokens::THINKING_END);
+                state = GenerationState::Response;
             }
         }
 
@@ -113,8 +118,10 @@ fn render_message(
 
             if Some(index) == last_user_idx && thinking_mode == ThinkingMode::Thinking {
                 prompt.push_str(tokens::THINKING_START);
+                state = GenerationState::Reasoning;
             } else {
                 prompt.push_str(tokens::THINKING_END);
+                state = GenerationState::Response;
             }
         }
 
@@ -226,9 +233,11 @@ fn render_message(
                     {
                         prompt.push_str("\n\n");
                         prompt.push_str(tokens::THINKING_START);
+                        state = GenerationState::Reasoning;
                     } else {
                         prompt.push_str("\n\n");
                         prompt.push_str(tokens::THINKING_END);
+                        state = GenerationState::Response;
                     }
                 }
             }
@@ -237,7 +246,7 @@ fn render_message(
         _ => anyhow::bail!("Unknown role: {}", role),
     }
 
-    Ok(())
+    Ok(state)
 }
 
 /// Encode messages to prompt string
@@ -254,7 +263,16 @@ pub fn encode_messages(
     thinking_mode: ThinkingMode,
     add_bos_token: bool,
 ) -> Result<String> {
+    Ok(encode_prompt(messages, thinking_mode, add_bos_token)?.into_text())
+}
+
+fn encode_prompt(
+    messages: &[JsonValue],
+    thinking_mode: ThinkingMode,
+    add_bos_token: bool,
+) -> Result<RenderedPrompt> {
     let mut prompt = String::new();
+    let mut state = GenerationState::Unknown;
 
     if add_bos_token {
         prompt.push_str(tokens::BOS);
@@ -264,7 +282,7 @@ pub fn encode_messages(
 
     let mut block = ToolBlock::default();
     for (index, msg) in messages.iter().enumerate() {
-        render_message(
+        state = render_message(
             &mut prompt,
             index,
             messages,
@@ -275,7 +293,7 @@ pub fn encode_messages(
         block.advance(index, msg);
     }
 
-    Ok(prompt)
+    Ok(RenderedPrompt::text(prompt).with_generation_state(state))
 }
 
 /// DeepSeek V3.2 Prompt Formatter
@@ -308,6 +326,10 @@ impl crate::OAIPromptFormatter for DeepSeekV32Formatter {
     }
 
     fn render(&self, req: &dyn crate::OAIChatLikeRequest) -> Result<String> {
+        Ok(self.render_prompt(req)?.into_text())
+    }
+
+    fn render_prompt(&self, req: &dyn crate::OAIChatLikeRequest) -> Result<RenderedPrompt> {
         let thinking_mode =
             super::common::resolve_thinking_mode(req.chat_template_args(), self.thinking_mode);
 
@@ -330,7 +352,7 @@ impl crate::OAIPromptFormatter for DeepSeekV32Formatter {
         super::common::inject_tools_and_response_format(&mut messages_array, req, false)?;
 
         // Encode with native implementation
-        encode_messages(
+        encode_prompt(
             &messages_array,
             thinking_mode,
             true, // always add BOS token

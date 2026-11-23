@@ -61,6 +61,7 @@ pub(crate) fn collect_allowed_types(
         literals,
         refs_allowed: !has_unsupported_schema_ref_scope(root),
         has_type_constraints: false,
+        in_alternative: false,
     };
     let allowed_types =
         collect_type_constraints(root, schema, 0, remaining, &mut active_refs, &mut context)
@@ -78,8 +79,7 @@ pub(crate) fn collect_allowed_types(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LiteralTypes<'a> {
-    All,
-    // Beam and MiniMax keep the declared type when no literal has that type.
+    // Contradicting literals must not erase the declared coercion type.
     DeclaredFirst,
     // GLM keeps mixed string enums ambiguous for scalar coercion.
     ScalarHints,
@@ -99,6 +99,7 @@ pub(crate) fn type_hint(
         literals,
         refs_allowed: !has_unsupported_schema_ref_scope(root),
         has_type_constraints: false,
+        in_alternative: false,
     };
     let types = collect_type_constraints(
         root,
@@ -123,6 +124,8 @@ struct TypeConstraintContext<'a> {
     literals: LiteralTypes<'a>,
     refs_allowed: bool,
     has_type_constraints: bool,
+    // Inside an anyOf/oneOf alternative, where another branch can take the text.
+    in_alternative: bool,
 }
 
 // None is an absent type constraint, not an empty intersection.
@@ -187,12 +190,15 @@ fn collect_type_constraints(
     if infer_literals
         && let Some(values) = schema.get("enum").and_then(Value::as_array)
         && match context.literals {
-            LiteralTypes::All | LiteralTypes::DeclaredFirst => true,
+            LiteralTypes::DeclaredFirst => true,
             // Like a string const, an enum admits the string reading only when raw
             // text is a member, so a typed string enum branch
             // (`{"type": "string", "enum": ["forever"]}`) cannot shadow another
             // union branch such as `{"type": "integer"}`.
-            LiteralTypes::StringHint(_) => !values.is_empty(),
+            LiteralTypes::StringHint(raw) => {
+                values.iter().any(|value| value.as_str() == Some(raw))
+                    || (context.in_alternative && !values.is_empty())
+            }
             LiteralTypes::ScalarHints => values.iter().all(|value| !value.is_string()),
             LiteralTypes::None => false,
         }
@@ -222,6 +228,7 @@ fn collect_type_constraints(
                     literals: context.literals,
                     refs_allowed,
                     has_type_constraints: false,
+                    in_alternative: context.in_alternative,
                 };
                 collect_type_constraints(
                     root,
@@ -248,6 +255,7 @@ fn collect_type_constraints(
                     literals: context.literals,
                     refs_allowed,
                     has_type_constraints: false,
+                    in_alternative: true,
                 };
                 match collect_type_constraints(
                     root,
@@ -258,10 +266,8 @@ fn collect_type_constraints(
                     &mut option_context,
                 ) {
                     Some(types) => alternatives.push(types),
-                    None if !matches!(
-                        context.literals,
-                        LiteralTypes::All | LiteralTypes::DeclaredFirst
-                    ) && !option_context.has_type_constraints => {}
+                    None if !matches!(context.literals, LiteralTypes::DeclaredFirst)
+                        && !option_context.has_type_constraints => {}
                     None => unknown = true,
                 }
             }
@@ -278,6 +284,7 @@ fn collect_type_constraints(
                 literals: context.literals,
                 refs_allowed,
                 has_type_constraints: false,
+                in_alternative: context.in_alternative,
             };
             if let Some(types) = collect_type_constraints(
                 root,
@@ -329,6 +336,7 @@ fn collect_type_constraints(
                     literals: context.literals,
                     refs_allowed,
                     has_type_constraints: false,
+                    in_alternative: context.in_alternative,
                 };
                 collect_type_constraints(
                     root,
