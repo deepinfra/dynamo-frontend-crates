@@ -19,6 +19,29 @@ use super::common::{
 
 pub use super::common::{ThinkingMode, tokens};
 
+/// The latest assistant message so far and the tool messages seen since it.
+/// User and system messages do not end a tool block.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ToolBlock {
+    assistant_idx: Option<usize>,
+    tool_count: usize,
+}
+
+impl ToolBlock {
+    fn advance(&mut self, index: usize, msg: &JsonValue) {
+        match msg.get("role").and_then(|r| r.as_str()) {
+            Some("assistant") => {
+                *self = Self {
+                    assistant_idx: Some(index),
+                    tool_count: 0,
+                }
+            }
+            Some("tool") => self.tool_count += 1,
+            _ => {}
+        }
+    }
+}
+
 /// Render a single message
 fn render_message(
     prompt: &mut String,
@@ -26,6 +49,7 @@ fn render_message(
     messages: &[JsonValue],
     thinking_mode: ThinkingMode,
     last_user_idx: Option<usize>,
+    block: ToolBlock,
 ) -> Result<()> {
     let msg = &messages[index];
     let role = msg
@@ -174,21 +198,8 @@ fn render_message(
         }
 
         "tool" => {
-            // Find the previous assistant message
-            let mut prev_assistant_idx = None;
-            let mut tool_count = 0;
-
-            for i in (0..index).rev() {
-                let prev_role = messages[i].get("role").and_then(|r| r.as_str());
-                if prev_role == Some("tool") {
-                    tool_count += 1;
-                } else if prev_role == Some("assistant") {
-                    prev_assistant_idx = Some(i);
-                    break;
-                }
-            }
-
-            let tool_call_order = tool_count + 1;
+            let prev_assistant_idx = block.assistant_idx;
+            let tool_call_order = block.tool_count + 1;
 
             // Add opening tag for first tool result
             if tool_call_order == 1 {
@@ -251,8 +262,17 @@ pub fn encode_messages(
 
     let last_user_idx = find_last_user_index(messages);
 
-    for (index, _) in messages.iter().enumerate() {
-        render_message(&mut prompt, index, messages, thinking_mode, last_user_idx)?;
+    let mut block = ToolBlock::default();
+    for (index, msg) in messages.iter().enumerate() {
+        render_message(
+            &mut prompt,
+            index,
+            messages,
+            thinking_mode,
+            last_user_idx,
+            block,
+        )?;
+        block.advance(index, msg);
     }
 
     Ok(prompt)
@@ -322,6 +342,77 @@ impl crate::OAIPromptFormatter for DeepSeekV32Formatter {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::time::{Duration, Instant};
+
+    /// The backward scan `render_message` used before `ToolBlock`.
+    fn scan_back(messages: &[JsonValue], index: usize) -> ToolBlock {
+        let mut block = ToolBlock::default();
+        for i in (0..index).rev() {
+            match messages[i].get("role").and_then(|r| r.as_str()) {
+                Some("tool") => block.tool_count += 1,
+                Some("assistant") => {
+                    block.assistant_idx = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        block
+    }
+
+    #[test]
+    fn tool_block_matches_backward_scan() {
+        let roles = ["system", "user", "assistant", "tool", "developer"];
+        let len = 7;
+        for code in 0..roles.len().pow(len as u32) {
+            let mut rest = code;
+            let messages: Vec<JsonValue> = (0..len)
+                .map(|_| {
+                    let role = roles[rest % roles.len()];
+                    rest /= roles.len();
+                    json!({ "role": role })
+                })
+                .collect();
+            let mut block = ToolBlock::default();
+            for (index, msg) in messages.iter().enumerate() {
+                assert_eq!(
+                    block,
+                    scan_back(&messages, index),
+                    "{messages:?} at {index}"
+                );
+                block.advance(index, msg);
+            }
+        }
+    }
+
+    #[test]
+    fn large_tool_block_renders_in_linear_time() {
+        let n = 50_000;
+        let calls: Vec<JsonValue> = (0..n)
+            .map(|i| json!({"id": format!("c{i}"), "type": "function", "function": {"name": "f", "arguments": "{}"}}))
+            .collect();
+        let mut messages = vec![
+            json!({"role": "user", "content": "run f"}),
+            json!({"role": "assistant", "content": "", "tool_calls": calls}),
+        ];
+        messages.extend(
+            (0..n)
+                .map(|i| json!({"role": "tool", "tool_call_id": format!("c{i}"), "content": "x"})),
+        );
+        let start = Instant::now();
+        let prompt = encode_messages(&messages, ThinkingMode::Thinking, true).unwrap();
+        assert!(
+            start.elapsed() < Duration::from_secs(5),
+            "took {:?}",
+            start.elapsed()
+        );
+        assert_eq!(prompt.matches("<function_results>").count(), 1);
+        assert_eq!(prompt.matches("<result>x</result>").count(), n);
+        assert!(prompt.ends_with(&format!(
+            "</function_results>\n\n{}",
+            tokens::THINKING_START
+        )));
+    }
 
     #[test]
     fn tool_name_keeps_literal_arguments_placeholder() {
